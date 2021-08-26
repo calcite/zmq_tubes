@@ -1,0 +1,19 @@
+[tool.poetry]
+name = "tube"
+version = "0.1.0"
+description = "Wrapper for MQTT & ZMQ comunication."
+authors = ["Martin Korbel <mkorbel@alps.cz>"]
+
+[tool.poetry.dependencies]
+python = "^3.9"
+paho-mqtt = "^1.5.1"
+pyzmq = "^22.2.1"
+PyYAML = "^5.4.1"
+cachetools = "^4.2.2"
+
+
+[tool.poetry.dev-dependencies]
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"

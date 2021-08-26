@@ -1,0 +1,9 @@
+sockets:
+  # addr:  ipc:///tmp/test.pipe
+  - name: Test
+    addr: "tcp://127.0.0.1:12345"
+#    socket_type: SUB
+    socket_type: REQ
+#    socket_type: DEALER
+    topics:
+      - foo/#
