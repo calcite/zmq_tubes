@@ -61,26 +61,31 @@ def handle_exception(loop, context):
 
 
 async def test_loop(manager):
-    if manager.get_socket_by_topic('foo').socket_type != zmq.REQ:
-        return
     while True:
         # manager.publish('foo/aaa/xxx', 'ABC')
         await manager.request('foo/aaa/xxx', 'client1')
-        await asyncio.sleep(5)
+        print('client1')
 
 async def test_loop2(manager):
-    if manager.get_socket_by_topic('foo').socket_type != zmq.REQ:
-        return
     while True:
         # manager.publish('foo/aaa/xxx', 'ABC')
         await manager.request('foo/aaa/xxx', 'client2')
-        await asyncio.sleep(5)
+        print('client2')
+
+async def test_loop3(manager):
+    while True:
+        # manager.publish('foo/aaa/xxx', 'ABC')
+        await manager.request('foo/aaa/xxx', 'client3')
+        print('client3')
 
 async def test(payload):
     # print(payload)
     if payload == 'client2':
-        await asyncio.sleep(8)
+        await asyncio.sleep(3)
         return 'rep2'
+    elif payload == 'client3':
+        # await asyncio.sleep(20)
+        return 'rep3'
     return 'rep1'
 
 def main(args):
@@ -95,9 +100,12 @@ def main(args):
             sig, lambda s=sig: asyncio.create_task(graceful_shutdown(loop, s)))
     loop.set_exception_handler(handle_exception)
     try:
-        loop.create_task(manager.loop(), name="XXX")
-        loop.create_task(test_loop(manager), name="test")
-        loop.create_task(test_loop2(manager), name="test2")
+        if args[1] != 'schema2.yml':
+            loop.create_task(manager.loop(), name="XXX")
+            loop.create_task(manager.loop(), name="XXX2")
+        else:
+            loop.create_task(test_loop(manager), name="test")
+            loop.create_task(test_loop2(manager), name="test2")
         loop.run_forever()
     finally:
         manager.close()
