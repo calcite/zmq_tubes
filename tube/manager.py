@@ -30,19 +30,19 @@ ZMQ_SOCKET_TYPE_MAPPING = {
 class TubeMessage:
 
     def __init__(self, socket, **kwargs):
-        self.socket: TubeSocket = socket
+        self.socket: Tube = socket
         self.topic = kwargs.get('topic')
         self.message = kwargs.get('message')
 
 
-class TubeSocket:
+class Tube:
 
     TYPE_SERVER = 'server'
     TYPE_CLIENT = 'client'
 
     def __init__(self, **kwargs):
         """
-        Constructor TubeSocket
+        Constructor Tube
         :param addr:str     address of server
         """
         self.logger = logging.getLogger(self.__class__.__name__)
@@ -245,7 +245,7 @@ class TubeSocket:
         return [it.decode('utf-8') for it in raw_request]
 
 
-class TubeManager:
+class TubeNode:
 
     def __init__(self, schema_file=None):
         self.logger = logging.getLogger(self.__class__.__name__)
@@ -257,7 +257,7 @@ class TubeManager:
         self.__stop_main_loop = False
 
     @property
-    def sockets(self) -> [TubeSocket]:
+    def sockets(self) -> [Tube]:
         """
         returns a list of all registered sockets
         """
@@ -293,21 +293,21 @@ class TubeManager:
             self.logger.debug(f"The file '{schema_filename}' was loaded.")
         if 'sockets' in data:
             for socket_info in data['sockets']:
-                socket = TubeSocket(**socket_info)
+                socket = Tube(**socket_info)
                 self.register_socket(socket, socket_info.get('topics', []))
 
-    def get_socket_by_topic(self, topic: str) -> TubeSocket:
+    def get_socket_by_topic(self, topic: str) -> Tube:
         """
-        returns the TubeSocket which is assigned to topic.
+        returns the Tube which is assigned to topic.
         """
         try:
             return next(self.__sockets_tree.iter_match(topic))
         except StopIteration:
             return None
 
-    def get_socket_by_name(self, name: str) -> TubeSocket:
+    def get_socket_by_name(self, name: str) -> Tube:
         """
-        returns the TubeSocket with the name
+        returns the Tube with the name
         """
         sockets = self.__sockets_tree.values()
         for socket in sockets:
@@ -315,9 +315,9 @@ class TubeManager:
                 return socket
         return None
 
-    def register_socket(self, socket: TubeSocket, topics: [str]):
+    def register_socket(self, socket: Tube, topics: [str]):
         """
-        registers list of topics to the TubeSocket
+        registers list of topics to the Tube
         """
         if isinstance(topics, str):
             topics = [topics]
@@ -337,7 +337,7 @@ class TubeManager:
             socket = self.get_socket_by_topic(topic)
         if not socket:
             raise TubeTopicNotConfigured(f'The topic "{topic}" is not assign '
-                                         f'to any TubeSocket.')
+                                         f'to any Tube.')
 
         socket.send(topic, payload, raw_socket=raw_socket)
 
@@ -383,7 +383,7 @@ class TubeManager:
             events = await poller.poll(timeout=100)
             for event in events:
                 raw_socket = event[0]
-                socket: TubeSocket = raw_socket.__dict__['tube_socket']
+                socket: Tube = raw_socket.__dict__['tube_socket']
                 topic, payload = \
                     await socket.receive_data(raw_socket=raw_socket)
                 callbacks = self.get_callback_by_topic(topic)

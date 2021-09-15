@@ -3,7 +3,7 @@ import asyncio
 import zmq
 
 from helpers import run_test_tasks
-from tube.manager import TubeSocket, TubeManager
+from tube.manager import Tube, TubeNode
 
 ADDR = 'ipc:///tmp/sub_pub.pipe'
 TOPIC = 'sub'
@@ -33,7 +33,7 @@ def test_sub_pubs():
         tube.subscribe(topic, __process2)
         await tube.start()
 
-    sub_socket = TubeSocket(
+    sub_socket = Tube(
         name='SUB',
         addr=ADDR,
         type='server',
@@ -41,27 +41,27 @@ def test_sub_pubs():
     )
     sub_socket.connect()
 
-    pub_socket1 = TubeSocket(
+    pub_socket1 = Tube(
         name='PUB',
         addr=ADDR,
         socket_type=zmq.PUB
     )
 
-    pub_socket2 = TubeSocket(
+    pub_socket2 = Tube(
         name='PUB',
         addr=ADDR,
         socket_type=zmq.PUB
     )
 
-    sub_tube = TubeManager()
+    sub_tube = TubeNode()
     sub_tube.register_socket(sub_socket, f"{TOPIC}/#")
     sub_tube.connect()
 
-    pub_tube1 = TubeManager()
+    pub_tube1 = TubeNode()
     pub_tube1.register_socket(pub_socket1, f"{TOPIC}/#")
     pub_tube1.connect()
 
-    pub_tube2 = TubeManager()
+    pub_tube2 = TubeNode()
     pub_tube2.register_socket(pub_socket2, f"{TOPIC}/#")
     pub_tube2.connect()
 
@@ -97,19 +97,19 @@ def test_pub_subs():
         tube.subscribe(topic, __process)
         await tube.start()
 
-    sub_socket1 = TubeSocket(
+    sub_socket1 = Tube(
         name='SUB',
         addr=ADDR,
         socket_type=zmq.SUB
     )
 
-    sub_socket2 = TubeSocket(
+    sub_socket2 = Tube(
         name='SUB',
         addr=ADDR,
         socket_type=zmq.SUB
     )
 
-    pub_socket = TubeSocket(
+    pub_socket = Tube(
         name='PUB',
         addr=ADDR,
         type='server',
@@ -117,15 +117,15 @@ def test_pub_subs():
     )
     pub_socket.connect()
 
-    sub_tube1 = TubeManager()
+    sub_tube1 = TubeNode()
     sub_tube1.register_socket(sub_socket1, f"{TOPIC}/#")
     sub_tube1.connect()
 
-    sub_tube2 = TubeManager()
+    sub_tube2 = TubeNode()
     sub_tube2.register_socket(sub_socket2, f"{TOPIC}/#")
     sub_tube2.connect()
 
-    pub_tube = TubeManager()
+    pub_tube = TubeNode()
     pub_tube.register_socket(pub_socket, f"{TOPIC}/#")
     pub_tube.connect()
 
