@@ -33,6 +33,7 @@ class TubeMessage:
         self.socket: Tube = socket
         self.topic = kwargs.get('topic')
         self.message = kwargs.get('message')
+        self.raw_socket
 
 
 class Tube:
@@ -51,17 +52,17 @@ class Tube:
         self.socket_info = kwargs
         self.addr = kwargs.get('addr')
         self.name = kwargs.get('name')
-        self.socket_type = kwargs.get('socket_type')
+        self.tube_type = kwargs.get('tube_type')
         self.identity = kwargs.get('identity')
         self.__server = kwargs.get('type') == self.TYPE_SERVER
 
     @staticmethod
-    def get_socket_type_name(socket_type):
-        if isinstance(socket_type, int):
+    def get_tube_type_name(tube_type):
+        if isinstance(tube_type, int):
             for key, val in ZMQ_SOCKET_TYPE_MAPPING.items():
-                if socket_type == val:
+                if tube_type == val:
                     return key
-        return socket_type
+        return tube_type
 
     @staticmethod
     def __format_payload(payload):
@@ -108,31 +109,31 @@ class Tube:
         self.__name = val
 
     @property
-    def socket_type(self) -> str:
+    def tube_type(self) -> str:
         """
         returns the ZMQ socket type
         """
-        return self.__socket_type
+        return self.__tube_type
 
     @property
-    def socket_type_name(self):
-        return self.get_socket_type_name(self.__socket_type)
+    def tube_type_name(self):
+        return self.get_tube_type_name(self.__tube_type)
 
-    @socket_type.setter
-    def socket_type(self, val):
+    @tube_type.setter
+    def tube_type(self, val):
         """
         set the ZMQ socket type
         """
         if not isinstance(val, int):
-            self.__socket_type = ZMQ_SOCKET_TYPE_MAPPING.get(val)
-            if not self.__socket_type:
+            self.__tube_type = ZMQ_SOCKET_TYPE_MAPPING.get(val)
+            if not self.__tube_type:
                 raise TubeException(f"The socket '{self.name}' has got "
-                                    f"an unsupported socket_type.")
+                                    f"an unsupported tube_type.")
         else:
             if val not in ZMQ_SOCKET_TYPE_MAPPING.values():
                 raise TubeException(f"The socket '{self.name}' has got "
-                                    f"an unsupported socket_type.")
-            self.__socket_type = val
+                                    f"an unsupported tube_type.")
+            self.__tube_type = val
 
     @property
     def is_server(self) -> bool:
@@ -146,7 +147,7 @@ class Tube:
         """
         Is the socket persistent?
         """
-        return self.socket_type in [zmq.PUB, zmq.SUB, zmq.REP, zmq.ROUTER]
+        return self.tube_type in [zmq.PUB, zmq.SUB, zmq.REP, zmq.ROUTER]
 
     @property
     def raw_socket(self) -> Socket:
@@ -162,19 +163,19 @@ class Tube:
             return self.__create_socket()
 
     def __create_socket(self) -> Socket:
-        raw_socket = self.context.socket(self.__socket_type)
+        raw_socket = self.context.socket(self.__tube_type)
         if self.is_server:
             self.logger.debug(
-                f"The socket '{self.name}' (ZMQ.{self.socket_type_name}) "
+                f"The socket '{self.name}' (ZMQ.{self.tube_type_name}) "
                 f"binds to the port {self.addr}.")
             raw_socket.bind(self.addr)
         else:
             self.logger.debug(
-                f"The socket '{self.name}' (ZMQ.{self.socket_type_name}) "
+                f"The socket '{self.name}' (ZMQ.{self.tube_type_name}) "
                 f"connects to the server {self.addr}")
             raw_socket.connect(self.addr)
         raw_socket.__dict__['tube_socket'] = self
-        if self.socket_type == zmq.SUB:
+        if self.tube_type == zmq.SUB:
             raw_socket.setsockopt(zmq.SUBSCRIBE, b'')
         if self.identity:
             self.logger.debug(
@@ -371,7 +372,7 @@ class TubeNode:
         loop = asyncio.get_event_loop()
         run_this_thread = False
         for socket in self.sockets:
-            if socket.socket_type in [zmq.SUB, zmq.REP, zmq.ROUTER]:
+            if socket.tube_type in [zmq.SUB, zmq.REP, zmq.ROUTER]:
                 poller.register(socket.raw_socket, zmq.POLLIN)
                 run_this_thread = True
         if not run_this_thread:
@@ -395,16 +396,16 @@ class TubeNode:
                     continue
                 self.logger.debug(
                     f"Incoming message for socket '{socket.name}'")
-                if socket.socket_type == zmq.SUB:
+                if socket.tube_type == zmq.SUB:
                     for callback in callbacks:
                         loop.create_task(callback(payload), name='zmq/sub')
-                elif socket.socket_type == zmq.REP:
+                elif socket.tube_type == zmq.REP:
                     loop.create_task(
                         __callback_wrapper(callbacks[-1], topic, payload,
                                            raw_socket),
                         name='zmq/rep'
                     )
-                elif socket.socket_type == zmq.ROUTER:
+                elif socket.tube_type == zmq.ROUTER:
                     loop.create_task(
                         __callback_wrapper(callbacks[-1], topic, payload,
                                            raw_socket),
