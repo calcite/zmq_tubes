@@ -77,8 +77,9 @@ class MQTTMatcher(object):
                     yield content
         return rec(self._root)
 
-    def values(self):
+    def values(self) -> list:
         _values = []
+
         def __step(node):
             if node._content and node._content not in _values:
                 _values.append(node._content)
