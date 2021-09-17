@@ -2,57 +2,59 @@ import asyncio
 import zmq
 
 from helpers import run_test_tasks
-from tube.manager import Tube, TubeNode
+from tube import Tube, TubeNode
 
 ADDR = 'ipc:///tmp/req_resp.pipe'
 TOPIC = 'req'
 
 
-def test_req():
+def test_req_resp():
 
-    async def request_task(tube, topic, name, number=2, timeout=30):
+    async def request_task(node, topic, name, number=2, timeout=30):
+        asyncio.current_task().set_name(name)
         for it in range(0, number):
-            resp = await tube.request(topic, f"request-{name}-{it}",
+            resp = await node.request(topic, f"request-{name}-{it}",
                                       timeout=timeout)
-            assert resp == f"response-{name}-{it}"
+            assert resp.payload == f"response-{name}-{it}"
 
-    async def response_task(tube, topic):
-        async def __process(payload):
-            assert payload[0:8] == 'request-'
-            return f'response-{payload[8:]}'
-        tube.register_handler(topic, __process)
-        await tube.start()
+    async def response_task(node, topic):
+        async def __process(message):
+            assert message.payload[0:8] == 'request-'
+            return f'response-{message.payload[8:]}'
+        asyncio.current_task().set_name('RESP')
+        node.register_handler(topic, __process)
+        await node.start()
 
-    req_socket1 = Tube(
-        name='REQ',
+    tube_req1 = Tube(
+        name='REQ1',
         addr=ADDR,
-        socket_type=zmq.REQ
+        tube_type=zmq.REQ
     )
-    req_socket2 = Tube(
-        name='REQ',
+    tube_req2 = Tube(
+        name='REQ2',
         addr=ADDR,
-        socket_type=zmq.REQ
+        tube_type=zmq.REQ
     )
-    resp_socket = Tube(
+    tube_resp = Tube(
         name='RESP',
         addr=ADDR,
         type='server',
-        socket_type=zmq.REP
+        tube_type=zmq.REP
     )
-    req_tube1 = TubeNode()
-    req_tube1.register_socket(req_socket1, f"{TOPIC}/#")
+    node_req1 = TubeNode()
+    node_req1.register_tube(tube_req1, f"{TOPIC}/#")
 
-    req_tube2 = TubeNode()
-    req_tube2.register_socket(req_socket2, f"{TOPIC}/#")
+    node_req2 = TubeNode()
+    node_req2.register_tube(tube_req2, f"{TOPIC}/#")
 
-    resp_tube = TubeNode()
-    resp_tube.register_socket(resp_socket, f"{TOPIC}/#")
-    resp_tube.connect()
+    node_resp = TubeNode()
+    node_resp.register_tube(tube_resp, f"{TOPIC}/#")
+    node_resp.connect()
 
     asyncio.run(
         run_test_tasks(
-            [request_task(req_tube1, f'{TOPIC}/aaa', 'REQ1'),
-             request_task(req_tube1, TOPIC, 'REQ2')],
-            [response_task(resp_tube, f'{TOPIC}/#')]
+            [request_task(node_req1, f'{TOPIC}/aaa', 'REQ1'),
+             request_task(node_req2, TOPIC, 'REQ2')],
+            [response_task(node_resp, f'{TOPIC}/#')]
         )
     )

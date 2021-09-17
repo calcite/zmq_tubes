@@ -2,6 +2,7 @@ import asyncio
 import datetime
 import logging
 from collections.abc import Callable
+from functools import singledispatchmethod
 
 import yaml
 import zmq
@@ -11,13 +12,13 @@ from cachetools import TTLCache
 from tube.matcher import MQTTMatcher
 
 
-class TubeException(Exception): pass
-class TubeTopicNotConfigured(Exception): pass
-class TubeMessageError(Exception): pass
-class TubeMessageTimeout(Exception): pass
+class TubeException(Exception): pass            # flake8: E701
+class TubeTopicNotConfigured(Exception): pass   # flake8: E701
+class TubeMessageError(Exception): pass         # flake8: E701
+class TubeMessageTimeout(Exception): pass       # flake8: E701
 
 
-ZMQ_SOCKET_TYPE_MAPPING = {
+TUBE_TYPE_MAPPING = {
     'SUB': zmq.SUB,
     'PUB': zmq.PUB,
     'REQ': zmq.REQ,
@@ -27,13 +28,77 @@ ZMQ_SOCKET_TYPE_MAPPING = {
     'PAIR': zmq.PAIR
 }
 
+
 class TubeMessage:
 
-    def __init__(self, socket, **kwargs):
-        self.socket: Tube = socket
+    @staticmethod
+    def __format_string(data):
+        if isinstance(data, str):
+            return data.encode('utf8')
+        elif isinstance(data, (bytes, bytearray)):
+            return data
+        elif isinstance(data, (int, float)):
+            return str(data).encode('ascii')
+        elif data is None:
+            return b''
+        else:
+            raise TypeError(
+                'data must be a string, bytearray, int, float or None.')
+
+    def __init__(self, tube, **kwargs):
+        self.tube: Tube = tube
         self.topic = kwargs.get('topic')
-        self.message = kwargs.get('message')
-        self.raw_socket
+        self.payload = kwargs.get('payload')
+        self.raw_socket = kwargs.get('raw_socket')
+        self.identity = kwargs.get('identity')
+        self.request: TubeMessage = kwargs.get('request')
+
+    def __repr__(self):
+        res = ''
+        if self.identity:
+            res = f"indentity: {self.identity}, "
+        return f"{res}topic: {self.topic},  payload: {self.payload}"
+
+    def get_response(self, payload=None) -> 'TubeMessage':
+        return TubeMessage(
+            self.tube,
+            topic=self.topic,
+            raw_socket=self.raw_socket,
+            identity=self.identity,
+            request=self,
+            payload=payload
+        )
+
+    def parse(self, data):
+        if self.tube.tube_type == zmq.ROUTER:
+            if len(data) != 4:
+                raise TubeMessageError(
+                    f"The received message (tube '{self.tube.name}') "
+                    f"is in unknown format. '{data}'")
+            self.identity = data.pop(0)
+            data.pop(0)
+        elif self.tube.tube_type == zmq.DEALER:
+            if len(data) != 3:
+                raise TubeMessageError(
+                    f"The received message (tube '{self.tube.name}') "
+                    f"is in unknown format. '{data}'")
+            data.pop(0)
+
+        data = [it.decode('utf-8') for it in data]
+        if len(data) != 2:
+            raise TubeMessageError(
+                f"The received message (tube '{self.tube.name}') "
+                f"is in unknown format. '{data}'")
+        self.topic, self.payload = data
+
+    def format_message(self):
+        response = []
+        if self.tube.tube_type == zmq.ROUTER:
+            response += [self.identity, b'']
+        if self.tube.tube_type == zmq.DEALER:
+            response.append(b'')
+        response += [self.topic, self.payload]
+        return [self.__format_string(it) for it in response]
 
 
 class Tube:
@@ -44,12 +109,15 @@ class Tube:
     def __init__(self, **kwargs):
         """
         Constructor Tube
-        :param addr:str     address of server
+        :param addr:str         address of tube
+        :param name:str         name of tube
+        :param type_type:str    'server' or 'client' (default)
+        :param type:str or int  type of tube
         """
         self.logger = logging.getLogger(self.__class__.__name__)
         self.__socket: Socket = None
         self.context = Context().instance()
-        self.socket_info = kwargs
+        self.tube_info = kwargs
         self.addr = kwargs.get('addr')
         self.name = kwargs.get('name')
         self.tube_type = kwargs.get('tube_type')
@@ -59,24 +127,10 @@ class Tube:
     @staticmethod
     def get_tube_type_name(tube_type):
         if isinstance(tube_type, int):
-            for key, val in ZMQ_SOCKET_TYPE_MAPPING.items():
+            for key, val in TUBE_TYPE_MAPPING.items():
                 if tube_type == val:
                     return key
         return tube_type
-
-    @staticmethod
-    def __format_payload(payload):
-        if isinstance(payload, str):
-            return payload.encode('utf8')
-        elif isinstance(payload, (bytes, bytearray)):
-            return payload
-        elif isinstance(payload, (int, float)):
-            return str(payload).encode('ascii')
-        elif payload is None:
-            return b''
-        else:
-            raise TypeError(
-                'payload must be a string, bytearray, int, float or None.')
 
     @property
     def addr(self) -> str:
@@ -91,27 +145,27 @@ class Tube:
         set the address (format: 'protocol://interface:port')
         """
         if not val:
-            raise TubeException(f"The parameter 'addr' is required.")
+            raise TubeException("The parameter 'addr' is required.")
         self.__addr = val
 
     @property
     def name(self) -> str:
         """
-        returns name of this socket or a socket address
+        returns name of this tube or a tube address
         """
         return self.__name if self.__name else self.__addr
 
     @name.setter
     def name(self, val: str):
         """
-        set the name of this socket
+        set the name of this tube
         """
         self.__name = val
 
     @property
     def tube_type(self) -> str:
         """
-        returns the ZMQ socket type
+        returns the tube type
         """
         return self.__tube_type
 
@@ -122,37 +176,38 @@ class Tube:
     @tube_type.setter
     def tube_type(self, val):
         """
-        set the ZMQ socket type
+        set the tube type
         """
         if not isinstance(val, int):
-            self.__tube_type = ZMQ_SOCKET_TYPE_MAPPING.get(val)
+            self.__tube_type = TUBE_TYPE_MAPPING.get(val)
             if not self.__tube_type:
-                raise TubeException(f"The socket '{self.name}' has got "
+                raise TubeException(f"The tube '{self.name}' has got "
                                     f"an unsupported tube_type.")
         else:
-            if val not in ZMQ_SOCKET_TYPE_MAPPING.values():
-                raise TubeException(f"The socket '{self.name}' has got "
+            if val not in TUBE_TYPE_MAPPING.values():
+                raise TubeException(f"The tube '{self.name}' has got "
                                     f"an unsupported tube_type.")
             self.__tube_type = val
 
     @property
     def is_server(self) -> bool:
         """
-        Is the socket a server side?
+        Is the tube a server side?
         """
         return self.__server
 
     @property
     def is_persistent(self) -> bool:
         """
-        Is the socket persistent?
+        Is the tube persistent?
         """
-        return self.tube_type in [zmq.PUB, zmq.SUB, zmq.REP, zmq.ROUTER]
+        return self.tube_type in [zmq.PUB, zmq.SUB, zmq.REP, zmq.ROUTER,
+                                  zmq.DEALER]
 
     @property
     def raw_socket(self) -> Socket:
         """
-        returns a native ZMQ Socket. For persistent sockets this returns still
+        returns a native ZMQ Socket. For persistent tubes this returns still
         the same ZMQ socket.
         """
         if self.is_persistent:
@@ -166,103 +221,137 @@ class Tube:
         raw_socket = self.context.socket(self.__tube_type)
         if self.is_server:
             self.logger.debug(
-                f"The socket '{self.name}' (ZMQ.{self.tube_type_name}) "
+                f"The tube '{self.name}' (ZMQ.{self.tube_type_name}) "
                 f"binds to the port {self.addr}.")
             raw_socket.bind(self.addr)
         else:
             self.logger.debug(
-                f"The socket '{self.name}' (ZMQ.{self.tube_type_name}) "
+                f"The tube '{self.name}' (ZMQ.{self.tube_type_name}) "
                 f"connects to the server {self.addr}")
             raw_socket.connect(self.addr)
-        raw_socket.__dict__['tube_socket'] = self
+        raw_socket.__dict__['tube'] = self
         if self.tube_type == zmq.SUB:
             raw_socket.setsockopt(zmq.SUBSCRIBE, b'')
         if self.identity:
             self.logger.debug(
-                f"Set identity '{self.identity}' for socket '{self.name}'."
+                f"Set identity '{self.identity}' for tube '{self.name}'."
             )
             raw_socket.setsockopt(zmq.IDENTITY, self.identity.encode('utf-8'))
         return raw_socket
 
     def connect(self):
         """
-        For persistent sockets, this open connection (connect/bind) to address.
+        For persistent tubes, this open connection (connect/bind) to address.
         """
         if self.is_persistent and self.__socket is None:
             return self.raw_socket
 
     def close(self):
         """
-        For persistent sockets, this close connection.
+        For persistent tubes, this close connection.
         """
         if self.is_persistent and self.__socket:
             self.raw_socket.close()
 
-    def send(self, topic: str, payload=None, raw_socket=None):
+    @singledispatchmethod
+    def send(self, arg):
+        raise NotImplementedError("Unknown type of topic")
+
+    @send.register
+    def _(self, topic: str, payload=None, raw_socket=None):
         """
         Send payload to topic.
+        :param topic - topic
+        :param payload - payload
+        :param raw_socket - zmqSocket, it used for non permanent connection
         """
-        b_payload = self.__format_payload(payload)
-        topic = topic.encode('utf-8')
-        message = [topic, b_payload]
-        if not raw_socket:
-            raw_socket = self.raw_socket
-        self.logger.debug("Send to %s: %s", topic, b_payload)
-        try:
-            raw_socket.send_multipart(message)
-        except (TypeError, zmq.ZMQError) as ex:
-            raise TubeMessageError(f"The message {message} does not be sent.") \
-                from ex
+        message = TubeMessage(
+            self,
+            payload=payload,
+            topic=topic,
+            raw_socket=raw_socket if raw_socket else self.raw_socket
+        )
+        self.send(message)
 
-    async def request(self, topic: str, payload=None, timeout=30):
-        raw_socket = self.raw_socket
+    @send.register
+    def _(self, message: TubeMessage):
+        """
+        Send message.
+        :param message - TubeMessage
+        """
+        raw_msg = message.format_message()
+        self.logger.debug("Send (tube: %s) to %s", self.name, raw_msg)
         try:
-            self.send(topic, payload, raw_socket=raw_socket)
-            for ix in range(0, timeout*10):
-                while await raw_socket.poll(100) != 0:
-                    in_topic, in_payload = await self.receive_data(raw_socket)
-                    if in_topic != topic:
+            message.raw_socket.send_multipart(raw_msg)
+        except (TypeError, zmq.ZMQError) as ex:
+            raise TubeMessageError(
+                f"The message '{message}' does not be sent.") from ex
+
+    @singledispatchmethod
+    async def request(self, arg) -> TubeMessage:
+        raise NotImplementedError("Unknown type of topic")
+
+    @request.register
+    async def _(self, topic: str, payload=None, timeout=None):
+        request = TubeMessage(
+            self,
+            payload=payload,
+            topic=topic,
+            raw_socket=self.raw_socket
+        )
+        return await self.request(request, timeout)
+
+    @request.register
+    async def _(self, request: TubeMessage, timeout: int = 30):
+        try:
+            self.send(request)
+            for ix in range(0, timeout * 10):
+                while await request.raw_socket.poll(100) != 0:
+                    response = await self.receive_data(
+                        raw_socket=request.raw_socket)
+                    if response.topic != request.topic:
                         raise TubeMessageError(
                             f"The response comes to different topic "
-                            f"({topic} != {in_topic}).")
-                    return in_payload
+                            f"({request.topic} != {response.topic}).")
+                    # self.logger.debug(f"Response from {response}")
+                    return response
         finally:
             if not self.is_persistent:
-                self.logger.debug(f"Close socket {self.name}")
-                raw_socket.close()
+                self.logger.debug(f"Close tube {self.name}")
+                request.raw_socket.close()
         raise TubeMessageTimeout(
-            f"No answer for the request in {timeout}s. Topic: {topic}")
+            f"No answer for the request in {timeout}s. Topic: {request.topic}")
 
     async def receive_data(self, raw_socket=None):
         if not raw_socket:
             raw_socket = self.raw_socket
-        raw_request = await raw_socket.recv_multipart()
+        raw_data = await raw_socket.recv_multipart()
         self.logger.debug(
-            f"Income (socket {self.name}): {raw_request}")
-        if len(raw_request) != 2:
-            raise TubeMessageError(
-                f"The income message (from '{self.name}') "
-                f"is in unknown format. '{raw_request}'")
-        return [it.decode('utf-8') for it in raw_request]
+            f"Received (tube {self.name}): {raw_data}")
+        message = TubeMessage(tube=self, raw_socket=raw_socket)
+        message.parse(raw_data)
+        return message
 
 
 class TubeNode:
 
-    def __init__(self, schema_file=None):
+    def __init__(self, *, schema_file=None, schema=None):
         self.logger = logging.getLogger(self.__class__.__name__)
-        self.__sockets_tree = MQTTMatcher()
+        self.__tubes_tree = MQTTMatcher()
         self.__callbacks = MQTTMatcher()
         self.__response_cache = TTLCache(maxsize=128, ttl=60)   # ttl in seconds
         if schema_file:
             self.load_schema(schema_file)
+        if schema:
+            self.parse_schema(schema)
         self.__stop_main_loop = False
 
     @property
-    def sockets(self) -> [Tube]:
+    def tubes(self) -> [Tube]:
         """
-        returns a list of all registered sockets
+        returns a list of all registered tubes
         """
-        return self.__sockets_tree.values()
+        return self.__tubes_tree.values()
 
     @property
     def random_message_id(self):
@@ -274,58 +363,66 @@ class TubeNode:
         """
         opens all persistent connections
         """
-        for socket in self.sockets:
-            socket.connect()
+        for tube in self.tubes:
+            tube.connect()
 
     def close(self):
         """
         close all persistent connections
         """
-        for socket in self.sockets:
-            socket.close()
+        for tube in self.tubes:
+            tube.close()
+
+    def parse_schema(self, schema):
+        """
+        parses tubes from string
+        """
+        if isinstance(schema, str):
+            schema = yaml.safe_load(schema)
+        if 'tubes' in schema:
+            for tube_info in schema['tubes']:
+                tube = Tube(**tube_info)
+                self.register_tube(tube, tube_info.get('topics', []))
 
     def load_schema(self, schema_filename: str):
         """
-        loads tube sockets from yml file and register their topics.
+        loads tubes from yml file and register their topics.
         """
-        data = {}
+        schema = {}
         with open(schema_filename, 'r+') as fd:
-            data = yaml.load(fd, Loader=yaml.FullLoader)
+            schema = fd.read()
             self.logger.debug(f"The file '{schema_filename}' was loaded.")
-        if 'sockets' in data:
-            for socket_info in data['sockets']:
-                socket = Tube(**socket_info)
-                self.register_socket(socket, socket_info.get('topics', []))
+        self.parse_schema(schema)
 
-    def get_socket_by_topic(self, topic: str) -> Tube:
+    def get_tube_by_topic(self, topic: str) -> Tube:
         """
         returns the Tube which is assigned to topic.
         """
         try:
-            return next(self.__sockets_tree.iter_match(topic))
+            return next(self.__tubes_tree.iter_match(topic))
         except StopIteration:
             return None
 
-    def get_socket_by_name(self, name: str) -> Tube:
+    def get_tube_by_name(self, name: str) -> Tube:
         """
         returns the Tube with the name
         """
-        sockets = self.__sockets_tree.values()
-        for socket in sockets:
-            if socket.name == name:
-                return socket
+        tubes = self.__tubes_tree.values()
+        for tube in tubes:
+            if tube.name == name:
+                return tube
         return None
 
-    def register_socket(self, socket: Tube, topics: [str]):
+    def register_tube(self, tube: Tube, topics: [str]):
         """
         registers list of topics to the Tube
         """
         if isinstance(topics, str):
             topics = [topics]
         for topic in topics:
-            self.logger.debug(f"The socket '{socket.name}' registers "
+            self.logger.debug(f"The tube '{tube.name}' registers "
                               f"a topic: {topic}")
-            self.__sockets_tree[topic] = socket
+            self.__tubes_tree[topic] = tube
 
     def get_callback_by_topic(self, topic: str) -> Callable:
         try:
@@ -333,18 +430,19 @@ class TubeNode:
         except StopIteration:
             return None
 
-    def send(self, topic: str, payload=None, socket=None, raw_socket=None):
-        if not socket:
-            socket = self.get_socket_by_topic(topic)
-        if not socket:
+    def send(self, topic: str, payload=None, tube=None, raw_socket=None):
+        if not tube:
+            tube = self.get_tube_by_topic(topic)
+        if not tube:
             raise TubeTopicNotConfigured(f'The topic "{topic}" is not assign '
                                          f'to any Tube.')
+        tube.send(topic, payload, raw_socket=raw_socket)
 
-        socket.send(topic, payload, raw_socket=raw_socket)
-
-    async def request(self, topic: str, payload=None, timeout=30):
-        socket = self.get_socket_by_topic(topic)
-        return await socket.request(topic, payload, timeout)
+    async def request(self, topic: str, payload=None, timeout=30) \
+            -> TubeMessage:
+        tube = self.get_tube_by_topic(topic)
+        res = await tube.request(topic, payload, timeout)
+        return res
 
     def publish(self, topic: str, payload=None):
         self.send(topic, payload)
@@ -363,52 +461,63 @@ class TubeNode:
         self.self.__stop_main_loop = True
 
     async def start(self):
-        async def __callback_wrapper(callback, topic, payload, raw_socket):
-            res = await callback(payload)
-            __socket = raw_socket.__dict__['tube_socket']
-            __socket.send(topic, res, raw_socket=raw_socket)
+        async def __callback_wrapper(_callback, _request: TubeMessage):
+            response = await _callback(_request)
+            if not isinstance(response, TubeMessage):
+                if _request.tube.tube_type in [zmq.ROUTER]:
+                    raise TubeMessageError(
+                        f"The response of the {_request.tube.tube_type_name} "
+                        f"callback has to be a instamce of TubeMessage class.")
+                payload = response
+                response = request.get_response()
+                response.payload = payload
+            else:
+                if _request.tube.tube_type in [zmq.ROUTER] and\
+                        response.request.identity != response.identity:
+                    raise TubeMessageError(
+                        "The TubeMessage response object doesn't be created "
+                        "from request object.")
+            request.tube.send(response)
 
         poller = Poller()
         loop = asyncio.get_event_loop()
         run_this_thread = False
-        for socket in self.sockets:
-            if socket.tube_type in [zmq.SUB, zmq.REP, zmq.ROUTER]:
-                poller.register(socket.raw_socket, zmq.POLLIN)
+        for tube in self.tubes:
+            if tube.tube_type in [zmq.SUB, zmq.REP, zmq.ROUTER, zmq.DEALER]:
+                poller.register(tube.raw_socket, zmq.POLLIN)
                 run_this_thread = True
         if not run_this_thread:
             self.logger.debug("The main loop is disabled, "
-                              "There is not registered any supported socket.")
+                              "There is not registered any supported tube.")
             return
-        self.logger.info(f"Main loop was started.")
+        self.logger.info("The main loop was started.")
         while not self.__stop_main_loop:
             events = await poller.poll(timeout=100)
             for event in events:
                 raw_socket = event[0]
-                socket: Tube = raw_socket.__dict__['tube_socket']
-                topic, payload = \
-                    await socket.receive_data(raw_socket=raw_socket)
-                callbacks = self.get_callback_by_topic(topic)
+                tube: Tube = raw_socket.__dict__['tube']
+                request = await tube.receive_data(raw_socket=raw_socket)
+                callbacks = self.get_callback_by_topic(request.topic)
                 if not callbacks:
                     self.logger.warning(
                         f"Incoming message does not match any topic, "
-                        f"it is ignored (topic: {topic})"
+                        f"it is ignored (topic: {request.topic})"
                     )
                     continue
-                self.logger.debug(
-                    f"Incoming message for socket '{socket.name}'")
-                if socket.tube_type == zmq.SUB:
+                # self.logger.debug(
+                #     f"Incoming message for tube '{tube.name}'")
+                if tube.tube_type == zmq.SUB:
                     for callback in callbacks:
-                        loop.create_task(callback(payload), name='zmq/sub')
-                elif socket.tube_type == zmq.REP:
+                        loop.create_task(callback(request), name='zmq/sub')
+                elif tube.tube_type == zmq.REP:
                     loop.create_task(
-                        __callback_wrapper(callbacks[-1], topic, payload,
-                                           raw_socket),
-                        name='zmq/rep'
-                    )
-                elif socket.tube_type == zmq.ROUTER:
+                        __callback_wrapper(callbacks[-1], request),
+                        name='zmq/rep')
+                elif tube.tube_type == zmq.ROUTER:
                     loop.create_task(
-                        __callback_wrapper(callbacks[-1], topic, payload,
-                                           raw_socket),
+                        __callback_wrapper(callbacks[-1], request),
                         name='zmq/router'
                     )
-        self.logger.info(f"Main loop was ended.")
+                elif tube.tube_type == zmq.DEALER:
+                    loop.create_task(callbacks[-1](request), name='zmq/dealer')
+        self.logger.info("The main loop was ended.")

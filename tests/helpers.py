@@ -7,7 +7,7 @@ def _handle_task_result(task: asyncio.Task) -> None:
         task.result()
     except asyncio.CancelledError:
         pass
-    except Exception as ex:
+    except Exception:
         logging.exception('Exception raised by task = %r', task)
 
 

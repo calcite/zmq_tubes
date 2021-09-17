@@ -1,9 +1,0 @@
-sockets:
-  # addr:  ipc:///tmp/test.pipe
-  - addr:  "tcp://*:12345"
-    type: server
-#    tube_type: PUB
-    tube_type: REP
-    topics:
-      - foo/#
-      - +/bar
