@@ -69,6 +69,9 @@ class TubeMessage:
             value = json.dumps(value)
         self.__payload = value
 
+    def to_json(self):
+        return json.loads(self.payload)
+
     def get_response(self, payload=None) -> 'TubeMessage':
         return TubeMessage(
             self.tube,
