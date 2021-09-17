@@ -1,0 +1,40 @@
+variables:
+  CONTAINER_TEST_IMAGE: $CI_REGISTRY_IMAGE/test:$CI_COMMIT_REF_SLUG
+  CONTAINER_RELEASE_IMAGE_LATEST: $CI_REGISTRY_IMAGE:latest
+  CONTAINER_RELEASE_IMAGE_TAG: $CI_REGISTRY_IMAGE:$CI_COMMIT_TAG
+
+flake8:
+  stage: .pre
+  image: pipelinecomponents/flake8:latest
+  script:
+    - flake8
+  tags:
+    - x86_64
+  except:
+    - tags
+
+tests:
+  stage: test
+  image: gitext.alps.cz:5000/mantra/docker_repository/x86_64/dind:latest
+  script:
+    - poetry install
+    - PYTHONUNBUFFERED=1 poetry run python -m pytest -s --log-cli-level=DEBUG --log-cli-format="%(asctime)s %(levelname)s %(message)s"
+#  dependencies:
+#    - build_dev
+  timeout: 10m
+  tags:
+    - x86_64
+  except:
+    - tags
+
+#build_dev:
+#  stage: build
+#  script:
+#    - docker build --label author=$GITLAB_USER_EMAIL -t $CONTAINER_TEST_IMAGE --target app .
+#    - docker push $CONTAINER_TEST_IMAGE
+#  before_script:
+#    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+#  tags:
+#    - x86_64
+#  except:
+#    - tags

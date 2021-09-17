@@ -1,5 +1,6 @@
 import asyncio
 import datetime
+import json
 import logging
 from collections.abc import Callable
 from functools import singledispatchmethod
@@ -7,7 +8,6 @@ from functools import singledispatchmethod
 import yaml
 import zmq
 from zmq.asyncio import Poller, Context, Socket
-from cachetools import TTLCache
 
 from tube.matcher import MQTTMatcher
 
@@ -48,16 +48,26 @@ class TubeMessage:
     def __init__(self, tube, **kwargs):
         self.tube: Tube = tube
         self.topic = kwargs.get('topic')
-        self.payload = kwargs.get('payload')
         self.raw_socket = kwargs.get('raw_socket')
         self.identity = kwargs.get('identity')
         self.request: TubeMessage = kwargs.get('request')
+        self.payload = kwargs.get('payload', '')
 
     def __repr__(self):
         res = ''
         if self.identity:
             res = f"indentity: {self.identity}, "
         return f"{res}topic: {self.topic},  payload: {self.payload}"
+
+    @property
+    def payload(self) -> str:
+        return self.__payload
+
+    @payload.setter
+    def payload(self, value):
+        if isinstance(value, list) or isinstance(value, dict):
+            value = json.dumps(value)
+        self.__payload = value
 
     def get_response(self, payload=None) -> 'TubeMessage':
         return TubeMessage(
@@ -339,7 +349,6 @@ class TubeNode:
         self.logger = logging.getLogger(self.__class__.__name__)
         self.__tubes_tree = MQTTMatcher()
         self.__callbacks = MQTTMatcher()
-        self.__response_cache = TTLCache(maxsize=128, ttl=60)   # ttl in seconds
         if schema_file:
             self.load_schema(schema_file)
         if schema:
