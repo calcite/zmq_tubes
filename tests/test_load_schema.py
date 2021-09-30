@@ -1,4 +1,4 @@
-from tube import TubeNode
+from tubes import TubeNode
 
 
 def test_load_schema_simple():

@@ -2,7 +2,7 @@ import asyncio
 import zmq
 
 from helpers import run_test_tasks
-from tube import Tube, TubeNode, TubeMessage
+from tubes import Tube, TubeNode, TubeMessage
 
 ADDR = 'ipc:///tmp/dealer_rep.pipe'
 TOPIC = 'req'
