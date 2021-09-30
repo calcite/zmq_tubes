@@ -1,5 +1,4 @@
 import asyncio
-import datetime
 import json
 import logging
 from collections.abc import Callable
@@ -9,7 +8,7 @@ import yaml
 import zmq
 from zmq.asyncio import Poller, Context, Socket
 
-from tube.matcher import MQTTMatcher
+from tube.matcher import TopicMatcher
 
 
 class TubeException(Exception): pass            # flake8: E701
@@ -235,7 +234,9 @@ class Tube:
     def add_sock_opt(self, key, val):
         if isinstance(key, str):
             key = zmq.__dict__[key]
-        self.__sockopts[key] = str(val).encode('utf-8')
+        if isinstance(val, str):
+            val = val.encode('utf8')
+        self.__sockopts[key] = val
 
     @property
     def sockopts(self):
@@ -249,14 +250,15 @@ class Tube:
 
     @property
     def identity(self):
-        return self.__sockopts.get(zmq.IDENTITY).decode('utf8')
+        return self.__sockopts.get(zmq.IDENTITY, b'').decode('utf8')
 
     @identity.setter
     def identity(self, val):
-        self.logger.debug(
-            f"Set identity '{val}' for tube '{self.name}'."
-        )
-        self.add_sock_opt(zmq.IDENTITY, val)
+        if val:
+            self.logger.debug(
+                f"Set identity '{val}' for tube '{self.name}'."
+            )
+            self.add_sock_opt(zmq.IDENTITY, val)
 
     def __create_socket(self) -> Socket:
         raw_socket = self.context.socket(self.__tube_type)
@@ -372,8 +374,8 @@ class TubeNode:
 
     def __init__(self, *, schema_file=None, schema=None):
         self.logger = logging.getLogger(self.__class__.__name__)
-        self.__tubes_tree = MQTTMatcher()
-        self.__callbacks = MQTTMatcher()
+        self.__tubes = TopicMatcher()
+        self.__callbacks = TopicMatcher()
         if schema_file:
             self.load_schema(schema_file)
         if schema:
@@ -385,13 +387,7 @@ class TubeNode:
         """
         returns a list of all registered tubes
         """
-        return self.__tubes_tree.values()
-
-    @property
-    def random_message_id(self):
-        # This is a compromise between the quality of random ID and their
-        # complexity.
-        return datetime.datetime.now().strftime('%s%f')
+        return self.__tubes.values()
 
     def connect(self):
         """
@@ -432,16 +428,13 @@ class TubeNode:
         """
         returns the Tube which is assigned to topic.
         """
-        try:
-            return next(self.__tubes_tree.iter_match(topic))
-        except StopIteration:
-            return None
+        return self.__tubes.match(topic)
 
     def get_tube_by_name(self, name: str) -> Tube:
         """
         returns the Tube with the name
         """
-        tubes = self.__tubes_tree.values()
+        tubes = self.__tubes.values()
         for tube in tubes:
             if tube.name == name:
                 return tube
@@ -454,23 +447,20 @@ class TubeNode:
         if isinstance(topics, str):
             topics = [topics]
         for topic in topics:
-            self.logger.debug(f"The tube '{tube.name}' registers "
-                              f"a topic: {topic}")
-            self.__tubes_tree[topic] = tube
+            self.logger.debug(f"The tube '{tube.name}' was registered to "
+                              f"the topic: {topic}")
+            self.__tubes.set_topic(topic, tube)
 
     def get_callback_by_topic(self, topic: str) -> Callable:
-        try:
-            return next(self.__callbacks.iter_match(topic))
-        except StopIteration:
-            return None
+        return self.__callbacks.match(topic)
 
-    def send(self, topic: str, payload=None, tube=None, raw_socket=None):
+    def send(self, topic: str, payload=None, tube=None):
         if not tube:
             tube = self.get_tube_by_topic(topic)
         if not tube:
             raise TubeTopicNotConfigured(f'The topic "{topic}" is not assign '
                                          f'to any Tube.')
-        tube.send(topic, payload, raw_socket=raw_socket)
+        tube.send(topic, payload)
 
     async def request(self, topic: str, payload=None, timeout=30) \
             -> TubeMessage:
@@ -485,11 +475,7 @@ class TubeNode:
         self.register_handler(topic, fce)
 
     def register_handler(self, topic: str, fce: Callable):
-        try:
-            self.__callbacks[topic]
-        except KeyError:
-            self.__callbacks[topic] = []
-        self.__callbacks[topic].append(fce)
+        self.__callbacks.get_topic(topic, set_default=[]).append(fce)
 
     def stop(self):
         self.__stop_main_loop = True

@@ -54,7 +54,7 @@ def test_req_resp():
     asyncio.run(
         run_test_tasks(
             [request_task(node_req1, f'{TOPIC}/aaa', 'REQ1'),
-             request_task(node_req2, TOPIC, 'REQ2')],
+             request_task(node_req2, f'{TOPIC}', 'REQ2')],
             [response_task(node_resp, f'{TOPIC}/#')]
         )
     )

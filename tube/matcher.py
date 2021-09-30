@@ -1,94 +1,67 @@
-class MQTTMatcher(object):
-    """Intended to manage topic filters including wildcards.
-
-    Internally, MQTTMatcher use a prefix tree (trie) to store
-    values associated with filters, and has an iter_match()
-    method to iterate efficiently over all filters that match
-    some topic name."""
+class TopicMatcher:
 
     class Node(object):
-        __slots__ = '_children', '_content'
+        __slots__ = 'children', 'content'
 
         def __init__(self):
-            self._children = {}
-            self._content = None
+            self.children = {}
+            self.content = None
 
     def __init__(self):
         self._root = self.Node()
 
-    def __setitem__(self, key, value):
-        """
-        Add a topic filter :key to the prefix tree
-        and associate it to :value
-        """
+    def set_topic(self, key, value):
         node = self._root
-        for sym in key.split('/'):
-            node = node._children.setdefault(sym, self.Node())
-        node._content = value
+        for sym in key.removesuffix('/').split('/'):
+            node = node.children.setdefault(sym, self.Node())
+        node.content = value
 
-    def __getitem__(self, key):
-        """Retrieve the value associated with some topic filter :key"""
-        try:
-            node = self._root
-            for sym in key.split('/'):
-                node = node._children[sym]
-            if node._content is None:
-                raise KeyError(key)
-            return node._content
-        except KeyError:
-            raise KeyError(key)
+    def get_topic(self, key, set_default=None):
+        node = self._root
+        for sym in key.removesuffix('/').split('/'):
+            node = node.children.get(sym)
+            if node is None:
+                if set_default is not None:
+                    self.set_topic(key, set_default)
+                return set_default
+        return node.content
 
-    def __delitem__(self, key):
-        """Delete the value associated with some topic filter :key"""
-        lst = []
-        try:
-            parent, node = None, self._root
-            for k in key.split('/'):
-                parent, node = node, node._children[k]
-                lst.append((parent, k, node))
-            # TODO
-            node._content = None
-        except KeyError:
-            raise KeyError(key)
-        else:  # cleanup
-            for parent, k, node in reversed(lst):
-                if node._children or node._content is not None:
-                    break
-                del parent._children[k]
-
-    def iter_match(self, topic):
-        """
-        Return an iterator on all values associated with filters
-        that match the :topic
-        """
-        lst = topic.split('/')
+    def matches(self, topic):
+        lst = topic.removesuffix('/').split('/')
+        lst_len = len(lst)
         normal = not topic.startswith('$')
+        res = []
 
-        def rec(node, i=0):
-            if i == len(lst):
-                if node._content is not None:
-                    yield node._content
+        def __rec(node, i=0):
+            if i == lst_len:
+                if node.content:
+                    res.append(node.content)
             else:
                 part = lst[i]
-                if part in node._children:
-                    for content in rec(node._children[part], i + 1):
-                        yield content
-                if '+' in node._children and (normal or i > 0):
-                    for content in rec(node._children['+'], i + 1):
-                        yield content
-            if '#' in node._children and (normal or i > 0):
-                content = node._children['#']._content
-                if content is not None:
-                    yield content
-        return rec(self._root)
+                if part in node.children:
+                    __rec(node.children[part], i + 1)
+                if '+' in node.children and (normal or i > 0):
+                    __rec(node.children['+'], i + 1)
+            if '#' in node.children and (normal or i > 0):
+                content = node.children['#'].content
+                if content:
+                    res.append(content)
+        __rec(self._root)
+        return res
+
+    def match(self, topic, default=None):
+        res = self.matches(topic)
+        if res:
+            return res[0]
+        return default
 
     def values(self) -> list:
         _values = []
 
         def __step(node):
-            if node._content and node._content not in _values:
-                _values.append(node._content)
-            for child in node._children.values():
+            if node.content and node.content not in _values:
+                _values.append(node.content)
+            for child in node.children.values():
                 __step(child)
         __step(self._root)
         return _values
