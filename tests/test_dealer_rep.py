@@ -30,7 +30,7 @@ def test_dealer_reps():
             assert request.payload[0:8] == 'request-'
             if 'REQ-0' in request.payload:
                 await asyncio.sleep(1)
-            return request.get_response(f'response-{request.payload[8:]}')
+            return request.create_response(f'response-{request.payload[8:]}')
 
         asyncio.current_task().set_name(name)
         tube.register_handler(topic, __process)
@@ -39,7 +39,7 @@ def test_dealer_reps():
     tube_dealer = Tube(
         name='DEALER',
         addr=ADDR,
-        type='server',
+        server=True,
         tube_type=zmq.DEALER
     )
 

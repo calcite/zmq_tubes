@@ -69,10 +69,10 @@ class TubeMessage:
             value = json.dumps(value)
         self.__payload = value
 
-    def to_json(self):
+    def from_json(self):
         return json.loads(self.payload)
 
-    def get_response(self, payload=None) -> 'TubeMessage':
+    def create_response(self, payload=None) -> 'TubeMessage':
         return TubeMessage(
             self.tube,
             topic=self.topic,
@@ -116,26 +116,26 @@ class TubeMessage:
 
 class Tube:
 
-    TYPE_SERVER = 'server'
-    TYPE_CLIENT = 'client'
-
     def __init__(self, **kwargs):
         """
         Constructor Tube
         :param addr:str         address of tube
         :param name:str         name of tube
-        :param type_type:str    'server' or 'client' (default)
+        :param server:bool   is this tube endpoint a server side (default False)
         :param type:str or int  type of tube
         """
         self.logger = logging.getLogger(self.__class__.__name__)
         self.__socket: Socket = None
         self.context = Context().instance()
         self.tube_info = kwargs
+        self.__sockopts = {}
+        self.sockopts = kwargs.get('sockopts', {})
         self.addr = kwargs.get('addr')
         self.name = kwargs.get('name')
+        self.__server = \
+            str(kwargs.get('server', '')).lower() in ('yes', 'true', '1')
         self.tube_type = kwargs.get('tube_type')
         self.identity = kwargs.get('identity')
-        self.__server = kwargs.get('type') == self.TYPE_SERVER
 
     @staticmethod
     def get_tube_type_name(tube_type):
@@ -201,6 +201,8 @@ class Tube:
                 raise TubeException(f"The tube '{self.name}' has got "
                                     f"an unsupported tube_type.")
             self.__tube_type = val
+        if self.__tube_type == zmq.SUB:
+            self.add_sock_opt(zmq.SUBSCRIBE, '')
 
     @property
     def is_server(self) -> bool:
@@ -230,6 +232,32 @@ class Tube:
         else:
             return self.__create_socket()
 
+    def add_sock_opt(self, key, val):
+        if isinstance(key, str):
+            key = zmq.__dict__[key]
+        self.__sockopts[key] = str(val).encode('utf-8')
+
+    @property
+    def sockopts(self):
+        return self.__sockopts.copy()
+
+    @sockopts.setter
+    def sockopts(self, opts: dict):
+        self.__sockopts = {}
+        for key, val in opts.items():
+            self.add_sock_opt(key, val)
+
+    @property
+    def identity(self):
+        return self.__sockopts.get(zmq.IDENTITY).decode('utf8')
+
+    @identity.setter
+    def identity(self, val):
+        self.logger.debug(
+            f"Set identity '{val}' for tube '{self.name}'."
+        )
+        self.add_sock_opt(zmq.IDENTITY, val)
+
     def __create_socket(self) -> Socket:
         raw_socket = self.context.socket(self.__tube_type)
         if self.is_server:
@@ -243,13 +271,8 @@ class Tube:
                 f"connects to the server {self.addr}")
             raw_socket.connect(self.addr)
         raw_socket.__dict__['tube'] = self
-        if self.tube_type == zmq.SUB:
-            raw_socket.setsockopt(zmq.SUBSCRIBE, b'')
-        if self.identity:
-            self.logger.debug(
-                f"Set identity '{self.identity}' for tube '{self.name}'."
-            )
-            raw_socket.setsockopt(zmq.IDENTITY, self.identity.encode('utf-8'))
+        for opt, val in self.__sockopts.items():
+            raw_socket.setsockopt(opt, val)
         return raw_socket
 
     def connect(self):
@@ -318,16 +341,15 @@ class Tube:
     async def _(self, request: TubeMessage, timeout: int = 30):
         try:
             self.send(request)
-            for ix in range(0, timeout * 10):
-                while await request.raw_socket.poll(100) != 0:
-                    response = await self.receive_data(
-                        raw_socket=request.raw_socket)
-                    if response.topic != request.topic:
-                        raise TubeMessageError(
-                            f"The response comes to different topic "
-                            f"({request.topic} != {response.topic}).")
-                    # self.logger.debug(f"Response from {response}")
-                    return response
+            while await request.raw_socket.poll(timeout * 1000) != 0:
+                response = await self.receive_data(
+                    raw_socket=request.raw_socket)
+                if response.topic != request.topic:
+                    raise TubeMessageError(
+                        f"The response comes to different topic "
+                        f"({request.topic} != {response.topic}).")
+                # self.logger.debug(f"Response from {response}")
+                return response
         finally:
             if not self.is_persistent:
                 self.logger.debug(f"Close tube {self.name}")
@@ -470,7 +492,7 @@ class TubeNode:
         self.__callbacks[topic].append(fce)
 
     def stop(self):
-        self.self.__stop_main_loop = True
+        self.__stop_main_loop = True
 
     async def start(self):
         async def __callback_wrapper(_callback, _request: TubeMessage):
@@ -480,9 +502,9 @@ class TubeNode:
                     raise TubeMessageError(
                         f"The response of the {_request.tube.tube_type_name} "
                         f"callback has to be a instamce of TubeMessage class.")
-                payload = response
-                response = request.get_response()
-                response.payload = payload
+                __payload = response
+                response = request.create_response()
+                response.payload = __payload
             else:
                 if _request.tube.tube_type in [zmq.ROUTER] and\
                         response.request.identity != response.identity:

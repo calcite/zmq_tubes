@@ -38,7 +38,7 @@ def test_sub_pubs():
     tube = Tube(
         name='SUB',
         addr=ADDR,
-        type='server',
+        server=True,
         tube_type=zmq.SUB
     )
 
@@ -115,7 +115,7 @@ def test_pub_subs():
     tube_pub = Tube(
         name='PUB',
         addr=ADDR,
-        type='server',
+        server=True,
         tube_type=zmq.PUB
     )
     tube_pub.connect()

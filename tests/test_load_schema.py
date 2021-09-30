@@ -7,7 +7,7 @@ def test_load_schema_simple():
     tubes:
     - name: test_tube
       addr:  ipc:///tmp/test.pipe
-      type: server
+      server: yes
       tube_type: REP
       identity: XXX
       topics:

@@ -37,6 +37,9 @@ tubes:
   - name: Server ROUTER
     addr:  ipc:///tmp/router.pipe      
     tube_type: ROUTER
+    server: yes
+    sockopts:
+      LINGER: 0
     topics:
       - server/#
 ```
@@ -74,7 +77,7 @@ async def handler(request: TubeMessage):
 tube = Tube(
     name='Server',
     addr='ipc:///tmp/req_resp.pipe',
-    type='server',
+    server=True,
     tube_type='REP'
 )
 
@@ -117,7 +120,7 @@ async def handler(request: TubeMessage):
 tube = Tube(
     name='Server',
     addr='ipc:///tmp/sub_pub.pipe',
-    type='server',
+    server=True,
     tube_type='SUB'
 )
 
@@ -164,7 +167,7 @@ async def handler(request: TubeMessage):
 tube = Tube(
     name='Server',
     addr='ipc:///tmp/req_router.pipe',
-    type='server',
+    server=True,
     tube_type='ROUTER'
 )
 
@@ -220,7 +223,7 @@ async def handler(request: TubeMessage):
 tube = Tube(
     name='Server',
     addr='ipc:///tmp/dealer_resp.pipe',
-    type='server',
+    server=True,
     tube_type='REP'
 )
 
@@ -274,7 +277,7 @@ async def handler(request: TubeMessage):
 tube = Tube(
     name='Server',
     addr='ipc:///tmp/dealer_router.pipe',
-    type='server',
+    server=True,
     tube_type='ROUTER'
 )
 
@@ -324,7 +327,7 @@ from tube import Tube, TubeNode, TubeMessage
 tube = Tube(
   name='Server',
   addr='ipc:///tmp/dealer_dealer.pipe',
-  type='server',
+  server=True,
   tube_type='DEALER'
 )
 

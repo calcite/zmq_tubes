@@ -28,7 +28,7 @@ def test_dealer_router():
     async def response_task(tube, topic, name):
         async def __process(request: TubeMessage):
             assert request.payload[0:8] == 'request-'
-            return request.get_response(f'response-{request.payload[8:]}')
+            return request.create_response(f'response-{request.payload[8:]}')
 
         asyncio.current_task().set_name(name)
         tube.register_handler(topic, __process)
@@ -37,7 +37,7 @@ def test_dealer_router():
     tube_dealer = Tube(
         name='DEALER',
         addr=ADDR,
-        type='server',
+        server=True,
         tube_type=zmq.DEALER
     )
 

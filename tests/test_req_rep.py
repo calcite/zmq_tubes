@@ -38,7 +38,7 @@ def test_req_resp():
     tube_resp = Tube(
         name='RESP',
         addr=ADDR,
-        type='server',
+        server=True,
         tube_type=zmq.REP
     )
     node_req1 = TubeNode()

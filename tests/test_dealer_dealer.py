@@ -29,7 +29,7 @@ def test_dealer_router():
     tube_dealer1 = Tube(
         name='DEALER1',
         addr=ADDR,
-        type='server',
+        server=True,
         tube_type=zmq.DEALER
     )
 

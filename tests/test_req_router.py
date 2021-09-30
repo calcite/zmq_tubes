@@ -22,7 +22,7 @@ def test_req():
             assert request.payload[0:8] == 'request-'
             if 'REQ2' in request.payload:
                 await asyncio.sleep(15)
-            return request.get_response(f'response-{request.payload[8:]}')
+            return request.create_response(f'response-{request.payload[8:]}')
 
         asyncio.current_task().set_name(name)
         tube.register_handler(topic, __process)
@@ -41,7 +41,7 @@ def test_req():
     tube_router = Tube(
         name='ROUTER',
         addr=ADDR,
-        type='server',
+        server=True,
         tube_type=zmq.ROUTER
     )
     node_req1 = TubeNode()
