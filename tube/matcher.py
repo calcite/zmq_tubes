@@ -1,6 +1,6 @@
 class TopicMatcher:
 
-    class Node(object):
+    class TopicNode(object):
         __slots__ = 'children', 'content'
 
         def __init__(self):
@@ -8,12 +8,12 @@ class TopicMatcher:
             self.content = None
 
     def __init__(self):
-        self._root = self.Node()
+        self._root = self.TopicNode()
 
     def set_topic(self, key, value):
         node = self._root
         for sym in key.removesuffix('/').split('/'):
-            node = node.children.setdefault(sym, self.Node())
+            node = node.children.setdefault(sym, self.TopicNode())
         node.content = value
 
     def get_topic(self, key, set_default=None):
