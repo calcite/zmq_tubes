@@ -1,6 +1,6 @@
 import pytest
 
-from tube.matcher import TopicMatcher
+from tubes.matcher import TopicMatcher
 
 
 class TestTopicMatcher:

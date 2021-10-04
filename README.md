@@ -46,11 +46,13 @@ tubes:
 
 ```python
 import asyncio
-from tube import TubeNode, TubeMessage
+from tubes import TubeNode, TubeMessage
+
 
 async def handler(request: TubeMessage):
-    print(request.payload)
-    return request.get_response('response')
+  print(request.payload)
+  return request.get_response('response')
+
 
 node = TubeNode(schema_file='test.yml')
 node.register_handler('server/#', handler)
@@ -66,19 +68,22 @@ print(await node.request('foo/xxx', 'message 2'))
 ### Request / Response
 This is a simple scenario, the server processes the requests serially.
 #### Server:
+
 ```python
-from tube import Tube, TubeNode, TubeMessage
+from tubes import Tube, TubeNode, TubeMessage
+
 
 async def handler(request: TubeMessage):
-    print(request.payload)
-    return 'answer' 
-    # or return request.get_response('response')
+  print(request.payload)
+  return 'answer'
+  # or return request.get_response('response')
+
 
 tube = Tube(
-    name='Server',
-    addr='ipc:///tmp/req_resp.pipe',
-    server=True,
-    tube_type='REP'
+  name='Server',
+  addr='ipc:///tmp/req_resp.pipe',
+  server=True,
+  tube_type='REP'
 )
 
 node = TubeNode()
@@ -90,13 +95,14 @@ await node.start()
 ```
 
 #### Client:
+
 ```python
-from tube import Tube, TubeNode
+from tubes import Tube, TubeNode
 
 tube = Tube(
-    name='Client',
-    addr='ipc:///tmp/req_resp.pipe',        
-    tube_type='REQ'
+  name='Client',
+  addr='ipc:///tmp/req_resp.pipe',
+  tube_type='REQ'
 )
 
 node = TubeNode()
@@ -111,17 +117,20 @@ print(response.payload)
 
 ### Subscribe / Publisher
 #### Server:
+
 ```python
-from tube import Tube, TubeNode, TubeMessage
+from tubes import Tube, TubeNode, TubeMessage
+
 
 async def handler(request: TubeMessage):
-    print(request.payload)                
+  print(request.payload)
+
 
 tube = Tube(
-    name='Server',
-    addr='ipc:///tmp/sub_pub.pipe',
-    server=True,
-    tube_type='SUB'
+  name='Server',
+  addr='ipc:///tmp/sub_pub.pipe',
+  server=True,
+  tube_type='SUB'
 )
 
 node = TubeNode()
@@ -132,13 +141,14 @@ await node.start()
 ```
 
 #### Client:
+
 ```python
-from tube import Tube, TubeNode
+from tubes import Tube, TubeNode
 
 tube = Tube(
-    name='Client',
-    addr='ipc:///tmp/sub_pub.pipe',        
-    tube_type='PUB'
+  name='Client',
+  addr='ipc:///tmp/sub_pub.pipe',
+  tube_type='PUB'
 )
 
 node = TubeNode()
@@ -154,21 +164,24 @@ The server is asynchronous. It means it is able to process
 more requests at the same time.
 
 #### Server:
+
 ```python
 import asyncio
-from tube import Tube, TubeNode, TubeMessage
+from tubes import Tube, TubeNode, TubeMessage
+
 
 async def handler(request: TubeMessage):
-    print(request.payload)        
-    if request.payload == 'wait':
-        await asyncio.sleep(10)          
-    return request.get_response(request.payload)    
+  print(request.payload)
+  if request.payload == 'wait':
+    await asyncio.sleep(10)
+  return request.get_response(request.payload)
+
 
 tube = Tube(
-    name='Server',
-    addr='ipc:///tmp/req_router.pipe',
-    server=True,
-    tube_type='ROUTER'
+  name='Server',
+  addr='ipc:///tmp/req_router.pipe',
+  server=True,
+  tube_type='ROUTER'
 )
 
 node = TubeNode()
@@ -183,7 +196,7 @@ await node.start()
 
 ```python
 import asyncio
-from tube import Tube, TubeNode
+from tubes import Tube, TubeNode
 
 tube = Tube(
   name='Client',
@@ -212,19 +225,22 @@ The client is asynchronous. It means it is able to send
 more requests at the same time.
 
 #### Server:
+
 ```python
-from tube import Tube, TubeNode, TubeMessage
+from tubes import Tube, TubeNode, TubeMessage
+
 
 async def handler(request: TubeMessage):
-    print(request.payload)
-    return 'response' 
-    # or return requset.get_response('response')
+  print(request.payload)
+  return 'response'
+  # or return requset.get_response('response')
+
 
 tube = Tube(
-    name='Server',
-    addr='ipc:///tmp/dealer_resp.pipe',
-    server=True,
-    tube_type='REP'
+  name='Server',
+  addr='ipc:///tmp/dealer_resp.pipe',
+  server=True,
+  tube_type='REP'
 )
 
 node = TubeNode()
@@ -237,7 +253,7 @@ await node.start()
 #### Client:
 
 ```python
-from tube import Tube, TubeNode, TubeMessage
+from tubes import Tube, TubeNode, TubeMessage
 
 tube = Tube(
   name='Client',
@@ -245,8 +261,10 @@ tube = Tube(
   tube_type='DEALER'
 )
 
+
 async def handler(response: TubeMessage):
-    print(response.payload) 
+  print(response.payload)
+
 
 node = TubeNode()
 node.register_tube(tube, 'test/#')
@@ -264,21 +282,24 @@ The client and server are asynchronous. It means it is able to send and process
 more requests/responses at the same time.
 
 #### Server:
+
 ```python
 import asyncio
-from tube import Tube, TubeNode, TubeMessage
+from tubes import Tube, TubeNode, TubeMessage
+
 
 async def handler(request: TubeMessage):
-    print(request.payload)        
-    if request.payload == 'wait':
-        await asyncio.sleep(10)          
-    return request.get_response(request.payload)    
+  print(request.payload)
+  if request.payload == 'wait':
+    await asyncio.sleep(10)
+  return request.get_response(request.payload)
+
 
 tube = Tube(
-    name='Server',
-    addr='ipc:///tmp/dealer_router.pipe',
-    server=True,
-    tube_type='ROUTER'
+  name='Server',
+  addr='ipc:///tmp/dealer_router.pipe',
+  server=True,
+  tube_type='ROUTER'
 )
 
 node = TubeNode()
@@ -292,7 +313,7 @@ await node.start()
 #### Client:
 
 ```python
-from tube import Tube, TubeNode, TubeMessage
+from tubes import Tube, TubeNode, TubeMessage
 
 tube = Tube(
   name='Client',
@@ -300,8 +321,10 @@ tube = Tube(
   tube_type='DEALER'
 )
 
+
 async def handler(response: TubeMessage):
-    print(response.payload) 
+  print(response.payload)
+
 
 node = TubeNode()
 node.register_tube(tube, 'test/#')
@@ -321,8 +344,9 @@ The client and server are asynchronous. It means it is able to send and process
 more requests/responses at the same time.
 
 #### Server:
+
 ```python
-from tube import Tube, TubeNode, TubeMessage
+from tubes import Tube, TubeNode, TubeMessage
 
 tube = Tube(
   name='Server',
@@ -331,8 +355,10 @@ tube = Tube(
   tube_type='DEALER'
 )
 
+
 async def handler(response: TubeMessage):
-    print(response.payload) 
+  print(response.payload)
+
 
 node = TubeNode()
 node.register_tube(tube, 'test/#')
@@ -345,7 +371,7 @@ node.send('test/xxx', 'message from server')
 #### Client:
 
 ```python
-from tube import Tube, TubeNode, TubeMessage
+from tubes import Tube, TubeNode, TubeMessage
 
 tube = Tube(
   name='Client',
@@ -353,8 +379,10 @@ tube = Tube(
   tube_type='DEALER'
 )
 
+
 async def handler(response: TubeMessage):
-    print(response.payload) 
+  print(response.payload)
+
 
 node = TubeNode()
 node.register_tube(tube, 'test/#')

@@ -1,14 +1,14 @@
 [tool.poetry]
-name = "tube"
+name = "tubes"
 version = "0.1.0"
-description = "Wrapper for MQTT & ZMQ comunication."
+license = "MIT"
+description = "Wrapper for ZMQ comunication."
 authors = ["Martin Korbel <mkorbel@alps.cz>"]
 
 [tool.poetry.dependencies]
 python = "^3.9"
 pyzmq = "^22.2.1"
 PyYAML = "^5.4.1"
-
 
 [tool.poetry.dev-dependencies]
 pytest = "^6.2.5"

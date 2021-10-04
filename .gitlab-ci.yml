@@ -2,6 +2,9 @@ variables:
   CONTAINER_TEST_IMAGE: $CI_REGISTRY_IMAGE/test:$CI_COMMIT_REF_SLUG
   CONTAINER_RELEASE_IMAGE_LATEST: $CI_REGISTRY_IMAGE:latest
   CONTAINER_RELEASE_IMAGE_TAG: $CI_REGISTRY_IMAGE:$CI_COMMIT_TAG
+  TWINE_PASSWORD: "$PYPI_PW"
+  TWINE_USERNAME: "gitlab-ci-token"
+  TWINE_REPOSITORY_URL: "https://gitext.alps.cz/api/v4/projects/${CI_PROJECT_ID}/packages/pypi"
 
 flake8:
   stage: .pre
@@ -27,14 +30,29 @@ tests:
   except:
     - tags
 
-#build_dev:
-#  stage: build
-#  script:
-#    - docker build --label author=$GITLAB_USER_EMAIL -t $CONTAINER_TEST_IMAGE --target app .
-#    - docker push $CONTAINER_TEST_IMAGE
-#  before_script:
-#    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
-#  tags:
-#    - x86_64
-#  except:
-#    - tags
+build_dev:
+  stage: build
+  image: gitext.alps.cz:5000/mantra/docker_repository/x86_64/dind:latest
+  script:
+    - poetry build
+  artifacts:
+    name: "tubes"
+    expire_in: 2 week
+    untracked: true
+    paths:
+      - dist/*
+  tags:
+    - x86_64
+  except:
+    - tags
+
+build:
+  stage: build
+  image: gitext.alps.cz:5000/mantra/docker_repository/x86_64/dind:latest
+  script:
+    - poetry build
+    - python -m twine upload --skip-existing --verbose dist/*
+  tags:
+    - x86_64
+  only:
+    - tags
