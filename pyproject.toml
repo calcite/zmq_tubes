@@ -1,0 +1,23 @@
+[tool.poetry]
+name = "tubes"
+version = "0.1.0"
+license = "MIT"
+description = "Wrapper for ZMQ comunication."
+authors = ["Martin Korbel <mkorbel@alps.cz>"]
+
+[tool.poetry.dependencies]
+python = "^3.9"
+pyzmq = "^22.2.1"
+PyYAML = "^5.4.1"
+
+[tool.poetry.dev-dependencies]
+pytest = "^6.2.5"
+
+[tool.pytest.ini_options]
+testpaths = [
+    "tests"
+]
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"

@@ -1,0 +1,58 @@
+variables:
+  CONTAINER_TEST_IMAGE: $CI_REGISTRY_IMAGE/test:$CI_COMMIT_REF_SLUG
+  CONTAINER_RELEASE_IMAGE_LATEST: $CI_REGISTRY_IMAGE:latest
+  CONTAINER_RELEASE_IMAGE_TAG: $CI_REGISTRY_IMAGE:$CI_COMMIT_TAG
+  TWINE_PASSWORD: "$PYPI_PW"
+  TWINE_USERNAME: "gitlab-ci-token"
+  TWINE_REPOSITORY_URL: "https://gitext.alps.cz/api/v4/projects/${CI_PROJECT_ID}/packages/pypi"
+
+flake8:
+  stage: .pre
+  image: pipelinecomponents/flake8:latest
+  script:
+    - flake8
+  tags:
+    - x86_64
+  except:
+    - tags
+
+tests:
+  stage: test
+  image: gitext.alps.cz:5000/mantra/docker_repository/x86_64/dind:latest
+  script:
+    - poetry install
+    - PYTHONUNBUFFERED=1 poetry run python -m pytest -s --log-cli-level=DEBUG --log-cli-format="%(asctime)s %(levelname)s %(message)s"
+#  dependencies:
+#    - build_dev
+  timeout: 10m
+  tags:
+    - x86_64
+  except:
+    - tags
+
+build_dev:
+  stage: build
+  image: gitext.alps.cz:5000/mantra/docker_repository/x86_64/dind:latest
+  script:
+    - poetry build
+  artifacts:
+    name: "tubes"
+    expire_in: 2 week
+    untracked: true
+    paths:
+      - dist/*
+  tags:
+    - x86_64
+  except:
+    - tags
+
+build:
+  stage: build
+  image: gitext.alps.cz:5000/mantra/docker_repository/x86_64/dind:latest
+  script:
+    - poetry build
+    - python -m twine upload --skip-existing --verbose dist/*
+  tags:
+    - x86_64
+  only:
+    - tags
