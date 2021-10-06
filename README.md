@@ -46,6 +46,7 @@ tubes:
 
 ```python
 import asyncio
+import yaml
 from tubes import TubeNode, TubeMessage
 
 
@@ -54,7 +55,10 @@ async def handler(request: TubeMessage):
   return request.get_response('response')
 
 
-node = TubeNode(schema_file='test.yml')
+with open('test.yml', 'r+') as fd:    
+    schema = yaml.safe_load(fd)
+
+node = TubeNode(schema=schema)
 node.register_handler('server/#', handler)
 asyncio.current_task(node.start(), name="Server")
 

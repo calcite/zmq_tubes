@@ -4,7 +4,6 @@ import logging
 from collections.abc import Callable
 from functools import singledispatchmethod
 
-import yaml
 import zmq
 from zmq.asyncio import Poller, Context, Socket
 
@@ -15,6 +14,7 @@ class TubeException(Exception): pass            # flake8: E701
 class TubeTopicNotConfigured(Exception): pass   # flake8: E701
 class TubeMessageError(Exception): pass         # flake8: E701
 class TubeMessageTimeout(Exception): pass       # flake8: E701
+class TubeMethodNotSupported(Exception): pass         # flake8: E701
 
 
 TUBE_TYPE_MAPPING = {
@@ -31,7 +31,7 @@ TUBE_TYPE_MAPPING = {
 class TubeMessage:
 
     @staticmethod
-    def __format_string(data):
+    def _format_string(data):
         if isinstance(data, str):
             return data.encode('utf8')
         elif isinstance(data, (bytes, bytearray)):
@@ -60,13 +60,13 @@ class TubeMessage:
 
     @property
     def payload(self) -> str:
-        return self.__payload
+        return self._payload
 
     @payload.setter
     def payload(self, value):
         if isinstance(value, list) or isinstance(value, dict):
             value = json.dumps(value)
-        self.__payload = value
+        self._payload = value
 
     def from_json(self):
         return json.loads(self.payload)
@@ -110,7 +110,7 @@ class TubeMessage:
         if self.tube.tube_type == zmq.DEALER:
             response.append(b'')
         response += [self.topic, self.payload]
-        return [self.__format_string(it) for it in response]
+        return [self._format_string(it) for it in response]
 
 
 class Tube:
@@ -124,14 +124,14 @@ class Tube:
         :param type:str or int  type of tube
         """
         self.logger = logging.getLogger(self.__class__.__name__)
-        self.__socket: Socket = None
+        self._socket: Socket = None
         self.context = Context().instance()
         self.tube_info = kwargs
-        self.__sockopts = {}
+        self._sockopts = {}
         self.sockopts = kwargs.get('sockopts', {})
         self.addr = kwargs.get('addr')
         self.name = kwargs.get('name')
-        self.__server = \
+        self._server = \
             str(kwargs.get('server', '')).lower() in ('yes', 'true', '1')
         self.tube_type = kwargs.get('tube_type')
         self.identity = kwargs.get('identity')
@@ -149,7 +149,7 @@ class Tube:
         """
         returns the address
         """
-        return self.__addr
+        return self._addr
 
     @addr.setter
     def addr(self, val: str):
@@ -158,32 +158,32 @@ class Tube:
         """
         if not val:
             raise TubeException("The parameter 'addr' is required.")
-        self.__addr = val
+        self._addr = val
 
     @property
     def name(self) -> str:
         """
         returns name of this tube or a tube address
         """
-        return self.__name if self.__name else self.__addr
+        return self._name if self._name else self._addr
 
     @name.setter
     def name(self, val: str):
         """
         set the name of this tube
         """
-        self.__name = val
+        self._name = val
 
     @property
     def tube_type(self) -> str:
         """
         returns the tube type
         """
-        return self.__tube_type
+        return self._tube_type
 
     @property
     def tube_type_name(self):
-        return self.get_tube_type_name(self.__tube_type)
+        return self.get_tube_type_name(self._tube_type)
 
     @tube_type.setter
     def tube_type(self, val):
@@ -191,16 +191,16 @@ class Tube:
         set the tube type
         """
         if not isinstance(val, int):
-            self.__tube_type = TUBE_TYPE_MAPPING.get(val)
-            if not self.__tube_type:
+            self._tube_type = TUBE_TYPE_MAPPING.get(val)
+            if not self._tube_type:
                 raise TubeException(f"The tube '{self.name}' has got "
                                     f"an unsupported tube_type.")
         else:
             if val not in TUBE_TYPE_MAPPING.values():
                 raise TubeException(f"The tube '{self.name}' has got "
                                     f"an unsupported tube_type.")
-            self.__tube_type = val
-        if self.__tube_type == zmq.SUB:
+            self._tube_type = val
+        if self._tube_type == zmq.SUB:
             self.add_sock_opt(zmq.SUBSCRIBE, '')
 
     @property
@@ -208,7 +208,7 @@ class Tube:
         """
         Is the tube a server side?
         """
-        return self.__server
+        return self._server
 
     @property
     def is_persistent(self) -> bool:
@@ -225,32 +225,32 @@ class Tube:
         the same ZMQ socket.
         """
         if self.is_persistent:
-            if not self.__socket:
-                self.__socket = self.__create_socket()
-            return self.__socket
+            if not self._socket:
+                self._socket = self._create_socket()
+            return self._socket
         else:
-            return self.__create_socket()
+            return self._create_socket()
 
     def add_sock_opt(self, key, val):
         if isinstance(key, str):
             key = zmq.__dict__[key]
         if isinstance(val, str):
             val = val.encode('utf8')
-        self.__sockopts[key] = val
+        self._sockopts[key] = val
 
     @property
     def sockopts(self):
-        return self.__sockopts.copy()
+        return self._sockopts.copy()
 
     @sockopts.setter
     def sockopts(self, opts: dict):
-        self.__sockopts = {}
+        self._sockopts = {}
         for key, val in opts.items():
             self.add_sock_opt(key, val)
 
     @property
     def identity(self):
-        return self.__sockopts.get(zmq.IDENTITY, b'').decode('utf8')
+        return self._sockopts.get(zmq.IDENTITY, b'').decode('utf8')
 
     @identity.setter
     def identity(self, val):
@@ -260,8 +260,8 @@ class Tube:
             )
             self.add_sock_opt(zmq.IDENTITY, val)
 
-    def __create_socket(self) -> Socket:
-        raw_socket = self.context.socket(self.__tube_type)
+    def _create_socket(self) -> Socket:
+        raw_socket = self.context.socket(self._tube_type)
         if self.is_server:
             self.logger.debug(
                 f"The tube '{self.name}' (ZMQ.{self.tube_type_name}) "
@@ -273,7 +273,7 @@ class Tube:
                 f"connects to the server {self.addr}")
             raw_socket.connect(self.addr)
         raw_socket.__dict__['tube'] = self
-        for opt, val in self.__sockopts.items():
+        for opt, val in self._sockopts.items():
             raw_socket.setsockopt(opt, val)
         return raw_socket
 
@@ -281,14 +281,14 @@ class Tube:
         """
         For persistent tubes, this open connection (connect/bind) to address.
         """
-        if self.is_persistent and self.__socket is None:
+        if self.is_persistent and self._socket is None:
             return self.raw_socket
 
     def close(self):
         """
         For persistent tubes, this close connection.
         """
-        if self.is_persistent and self.__socket:
+        if self.is_persistent and self._socket:
             self.raw_socket.close()
 
     @singledispatchmethod
@@ -341,6 +341,11 @@ class Tube:
 
     @request.register
     async def _(self, request: TubeMessage, timeout: int = 30):
+        if self.tube_type != zmq.REQ:
+            raise TubeMethodNotSupported(
+                f"The tube '{self.name}' (type: '{self.tube_type_name}') "
+                f"can request topic."
+            )
         try:
             self.send(request)
             while await request.raw_socket.poll(timeout * 1000) != 0:
@@ -372,22 +377,20 @@ class Tube:
 
 class TubeNode:
 
-    def __init__(self, *, schema_file=None, schema=None):
+    def __init__(self, *, schema=None):
         self.logger = logging.getLogger(self.__class__.__name__)
-        self.__tubes = TopicMatcher()
-        self.__callbacks = TopicMatcher()
-        if schema_file:
-            self.load_schema(schema_file)
+        self._tubes = TopicMatcher()
+        self._callbacks = TopicMatcher()
         if schema:
             self.parse_schema(schema)
-        self.__stop_main_loop = False
+        self._stop_main_loop = False
 
     @property
     def tubes(self) -> [Tube]:
         """
         returns a list of all registered tubes
         """
-        return self.__tubes.values()
+        return self._tubes.values()
 
     def connect(self):
         """
@@ -405,36 +408,24 @@ class TubeNode:
 
     def parse_schema(self, schema):
         """
-        parses tubes from string
+        parses tubes from configuration
         """
-        if isinstance(schema, str):
-            schema = yaml.safe_load(schema)
         if 'tubes' in schema:
             for tube_info in schema['tubes']:
                 tube = Tube(**tube_info)
                 self.register_tube(tube, tube_info.get('topics', []))
 
-    def load_schema(self, schema_filename: str):
-        """
-        loads tubes from yml file and register their topics.
-        """
-        schema = {}
-        with open(schema_filename, 'r+') as fd:
-            schema = fd.read()
-            self.logger.debug(f"The file '{schema_filename}' was loaded.")
-        self.parse_schema(schema)
-
     def get_tube_by_topic(self, topic: str) -> Tube:
         """
         returns the Tube which is assigned to topic.
         """
-        return self.__tubes.match(topic)
+        return self._tubes.match(topic)
 
     def get_tube_by_name(self, name: str) -> Tube:
         """
         returns the Tube with the name
         """
-        tubes = self.__tubes.values()
+        tubes = self._tubes.values()
         for tube in tubes:
             if tube.name == name:
                 return tube
@@ -447,12 +438,16 @@ class TubeNode:
         if isinstance(topics, str):
             topics = [topics]
         for topic in topics:
-            self.logger.debug(f"The tube '{tube.name}' was registered to "
-                              f"the topic: {topic}")
-            self.__tubes.set_topic(topic, tube)
+            if self._tubes.get_topic(topic):
+                self.logger.warning(f"The tube '{tube.name}' overrides "
+                                    f"the exist topic: {topic}")
+            else:
+                self.logger.debug(f"The tube '{tube.name}' was registered to "
+                                  f"the topic: {topic}")
+            self._tubes.set_topic(topic, tube)
 
     def get_callback_by_topic(self, topic: str) -> Callable:
-        return self.__callbacks.match(topic)
+        return self._callbacks.match(topic)
 
     def send(self, topic: str, payload=None, tube=None):
         if not tube:
@@ -465,32 +460,58 @@ class TubeNode:
     async def request(self, topic: str, payload=None, timeout=30) \
             -> TubeMessage:
         tube = self.get_tube_by_topic(topic)
+        if not tube:
+            raise TubeTopicNotConfigured(f'The topic "{topic}" is not assign '
+                                         f'to any Tube.')
         res = await tube.request(topic, payload, timeout)
         return res
 
     def publish(self, topic: str, payload=None):
+        tube = self.get_tube_by_topic(topic)
+        if not tube:
+            raise TubeTopicNotConfigured(f'The topic "{topic}" is not assign '
+                                         f'to any Tube.')
+        if tube.tube_type != zmq.PUB:
+            raise TubeMethodNotSupported(
+                f"The tube '{tube.name}' (type: '{tube.tube_type_name}') "
+                f"can not publish message."
+            )
         self.send(topic, payload)
 
     def subscribe(self, topic: str, fce: Callable):
+        tube = self.get_tube_by_topic(topic)
+        if not tube:
+            raise TubeTopicNotConfigured(f'The topic "{topic}" is not assign '
+                                         f'to any Tube.')
+        if tube.tube_type != zmq.SUB:
+            raise TubeMethodNotSupported(
+                f"The tube '{tube.name}' (type: '{tube.tube_type_name}') "
+                f"can not subscribe topic."
+            )
         self.register_handler(topic, fce)
 
     def register_handler(self, topic: str, fce: Callable):
-        self.__callbacks.get_topic(topic, set_default=[]).append(fce)
+        tube = self.get_tube_by_topic(topic)
+        if not tube:
+            self.logger.warning(f"This topic '{topic}' does not have any "
+                                f"assigned tube. This callback will be "
+                                f"never fired.")
+        self._callbacks.get_topic(topic, set_default=[]).append(fce)
 
     def stop(self):
-        self.__stop_main_loop = True
+        self._stop_main_loop = True
 
     async def start(self):
-        async def __callback_wrapper(_callback, _request: TubeMessage):
+        async def _callback_wrapper(_callback, _request: TubeMessage):
             response = await _callback(_request)
             if not isinstance(response, TubeMessage):
                 if _request.tube.tube_type in [zmq.ROUTER]:
                     raise TubeMessageError(
                         f"The response of the {_request.tube.tube_type_name} "
                         f"callback has to be a instamce of TubeMessage class.")
-                __payload = response
+                _payload = response
                 response = request.create_response()
-                response.payload = __payload
+                response.payload = _payload
             else:
                 if _request.tube.tube_type in [zmq.ROUTER] and\
                         response.request.identity != response.identity:
@@ -511,7 +532,7 @@ class TubeNode:
                               "There is not registered any supported tube.")
             return
         self.logger.info("The main loop was started.")
-        while not self.__stop_main_loop:
+        while not self._stop_main_loop:
             events = await poller.poll(timeout=100)
             for event in events:
                 raw_socket = event[0]
@@ -531,11 +552,11 @@ class TubeNode:
                         loop.create_task(callback(request), name='zmq/sub')
                 elif tube.tube_type == zmq.REP:
                     loop.create_task(
-                        __callback_wrapper(callbacks[-1], request),
+                        _callback_wrapper(callbacks[-1], request),
                         name='zmq/rep')
                 elif tube.tube_type == zmq.ROUTER:
                     loop.create_task(
-                        __callback_wrapper(callbacks[-1], request),
+                        _callback_wrapper(callbacks[-1], request),
                         name='zmq/router'
                     )
                 elif tube.tube_type == zmq.DEALER:

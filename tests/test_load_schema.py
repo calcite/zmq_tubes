@@ -1,3 +1,5 @@
+import yaml
+
 from tubes import TubeNode
 
 
@@ -5,17 +7,17 @@ def test_load_schema_simple():
 
     schema = """
     tubes:
-    - name: test_tube
-      addr:  ipc:///tmp/test.pipe
-      server: yes
-      tube_type: REP
-      identity: XXX
-      topics:
-        - foo/#
-        - +/bar
+      - name: test_tube
+        addr:  ipc:///tmp/test.pipe
+        server: yes
+        tube_type: REP
+        identity: XXX
+        topics:
+          - foo/#
+          - +/bar
     """
 
-    node = TubeNode(schema=schema)
+    node = TubeNode(schema=yaml.safe_load(schema))
 
     assert len(node.tubes) == 1
     assert node.tubes[0].name == 'test_tube'
@@ -46,7 +48,7 @@ def test_load_schema_hierarchy():
         - +/bar/test
     """
 
-    node = TubeNode(schema=schema)
+    node = TubeNode(schema=yaml.safe_load(schema))
 
     assert len(node.tubes) == 2
     assert node.get_tube_by_topic('foo/aaa').name == 'tube1'
