@@ -9,6 +9,11 @@ on:
       - '*.py'
     branches:
       - '**'
+  pull_request:
+    paths:
+      - '*.py'
+    branches:
+      - '**'
 
 jobs:
   flake8:
