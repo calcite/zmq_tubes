@@ -8,7 +8,6 @@ ADDR = 'ipc:///tmp/dealer_rep.pipe'
 TOPIC = 'req'
 
 
-
 def test_dealer_reps():
     data = ['response-DEALER_REQ-0', 'response-DEALER_REQ-1']
 

@@ -37,6 +37,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   tests:
+    needs: flake8
     runs-on: ubuntu-latest
     steps:
       - name: Setup Python
@@ -62,6 +63,7 @@ jobs:
         run: poetry run python -m pytest -p no:sugar -q tests/
 
   build:
+    needs: tests
     runs-on: ubuntu-latest
     steps:
       - name: Setup Python
