@@ -5,8 +5,10 @@ name: Lint
 # Controls when the workflow will run
 on:
   push:
-    paths:
-      - '*.py'
+#     paths:
+#       - '*.py'
+    branches:
+      - '**'
 
 jobs:
   flake8:
