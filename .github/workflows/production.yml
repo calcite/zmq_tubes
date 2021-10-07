@@ -58,6 +58,14 @@ jobs:
         shell: bash
         run: poetry config virtualenvs.in-project true
 
+      - name: Update version
+        shell: bash
+        run: echo "${GITHUB_REF##*/}"  #poetry version
+
+      - name: Build package
+        shell: bash
+        run: poetry build -n
+
 #      - name: Create Release
 #        uses: ncipollo/release-action@v1
 #        with:
@@ -67,5 +75,7 @@ jobs:
 #          prerelease: steps.check-version.outputs.prerelease == 'true'
 
       - name: Publish to PyPI
-        run: poetry publish --build --username __token__ --password ${{ secrets.PYPI_TOKEN }}
+        env:
+          POETRY_PYPI_TOKEN_PYPI: ${{ secrets.PYPI_TOKEN }}
+       run: poetry publish --username __token__ --password $POETRY_PYPI_TOKEN_PYPI
 
