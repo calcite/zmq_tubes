@@ -2,8 +2,18 @@
 name = "zmq_tubes"
 version = "0.1.0"
 license = "MIT"
+readme = "README.md"
 description = "Wrapper for ZMQ comunication."
 authors = ["Martin Korbel <mkorbel@alps.cz>"]
+homepage = "https://github.com/calcite/zmq_tubes"
+repository = "https://github.com/calcite/zmq_tubes"
+documentation = "https://github.com/calcite/zmq_tubes"
+
+keywords = ["zmq", "mqtt", "tubes", "zmq_tubes"]
+classifiers = [
+    "Topic :: System :: Networking",
+    "Topic :: Software Development :: Libraries :: Python Modules"
+]
 
 [tool.poetry.dependencies]
 python = "^3.9"

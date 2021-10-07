@@ -6,7 +6,7 @@ name: Release
 on:
   push:
     tags:
-      - '*.*.*'
+      - 'v*.*.*'
 
 jobs:
 
@@ -55,7 +55,7 @@ jobs:
 
       - name: Update version
         shell: bash
-        run: poetry version "${GITHUB_REF##*/}"
+        run: poetry version "${GITHUB_REF##*/v}"
 
       - name: Build package
         shell: bash
