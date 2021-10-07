@@ -4,12 +4,12 @@ name: Release
 
 # Controls when the workflow will run
 on:
-#  push:
-#    tags:
-#      - '*.*.*'
+  push:
+    tags:
+      - '*.*.*'
   pull_request:
-    paths:
-      - '*.py'
+#    paths:
+#      - '*.py'
     branches:
       - '**'
 
