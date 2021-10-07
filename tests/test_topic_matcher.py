@@ -1,6 +1,6 @@
 import pytest
 
-from tubes.matcher import TopicMatcher
+from zmq_tubes.matcher import TopicMatcher
 
 
 class TestTopicMatcher:

@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "tubes"
+name = "zmq_tubes"
 version = "0.1.0"
 license = "MIT"
 description = "Wrapper for ZMQ comunication."

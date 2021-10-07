@@ -7,7 +7,7 @@ from functools import singledispatchmethod
 import zmq
 from zmq.asyncio import Poller, Context, Socket
 
-from tubes.matcher import TopicMatcher
+from zmq_tubes.matcher import TopicMatcher
 
 
 class TubeException(Exception): pass            # flake8: E701

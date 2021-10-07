@@ -1,6 +1,6 @@
 import yaml
 
-from tubes import TubeNode
+from zmq_tubes import TubeNode
 
 
 def test_load_schema_simple():
