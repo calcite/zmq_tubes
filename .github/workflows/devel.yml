@@ -1,19 +1,18 @@
-# This is a basic workflow to help you get started with Actions
-
 name: Developing
 
 # Controls when the workflow will run
 on:
-  push:
-    paths:
-      - '*.py'
-    branches:
-      - '**'
+#  push:
+#    paths:
+#      - '**.py'
+#    branches:
+#      - '**'
   pull_request:
     paths:
-      - '*.py'
+      - '**.py'
     branches:
       - '**'
+
 
 jobs:
   flake8:
@@ -88,4 +87,3 @@ jobs:
         with:
           name: packages
           path: dist/*
-
