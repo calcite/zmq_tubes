@@ -1,0 +1,43 @@
+# This is a basic workflow to help you get started with Actions
+
+name: Tests
+
+# Controls when the workflow will run
+on:
+  push:
+    paths:
+      - '*.py'
+    branches:
+      - '**'
+  pull_request:
+    paths:
+      - '*.py'
+    branches:
+      - '**'
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: 3.9
+
+      - uses: actions/checkout@master
+
+      - name: Install poetry
+        run: pip install poetry
+
+      - name: Configure poetry
+        shell: bash
+        run: poetry config virtualenvs.in-project true
+
+      - name: Install dependencies
+        shell: bash
+        run: poetry install
+
+      - name: Run pytest
+        shell: bash
+        run: poetry run python -m pytest -p no:sugar -q tests/
+
