@@ -75,9 +75,7 @@ jobs:
 #          prerelease: steps.check-version.outputs.prerelease == 'true'
 
       - name: Publish to PyPI
-        env:
-          POETRY_REPOSITORIES_TESTPYPI_URL: https://test.pypi.org/legacy/
-          POETRY_HTTP_BASIC_TESTPYPI_USERNAME: __token__
-          POETRY_HTTP_BASIC_TESTPYPI_PASSWORD: ${{ secrets.PYPI_TOKEN }}
-        run: poetry publish
+        run: |
+         poetry config pypi-token.pypi ${{ secrets.PYPI_TOKEN }}
+         poetry publish
 
