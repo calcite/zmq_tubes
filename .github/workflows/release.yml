@@ -57,25 +57,13 @@ jobs:
         shell: bash
         run: poetry version "${GITHUB_REF##*/v}"
 
-      - name: Build package
-        shell: bash
-        run: poetry build -n
-
-#      - name: Create Release
-#        uses: ncipollo/release-action@v1
-#        with:
-#          artifacts: "dist/*"
-#          token: ${{ secrets.GITHUB_TOKEN }}
-#          draft: false
-#          prerelease: steps.check-version.outputs.prerelease == 'true'
-
       - name: Publish to PyPI
         shell: bash
         env:
           POETRY_PYPI_TOKEN_PYPI: ${{ secrets.PYPI_TOKEN }}
         run: |
          poetry config http-basic.pypi "__token__" "$POETRY_PYPI_TOKEN_PYPI"
-         poetry publish
+         poetry publish --build
 
       - name: push
         uses: actions-x/commit@v2
