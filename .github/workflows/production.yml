@@ -58,10 +58,6 @@ jobs:
         shell: bash
         run: poetry config virtualenvs.in-project true
 
-      - name: Build package
-        shell: bash
-        run: poetry build -n
-
 #      - name: Create Release
 #        uses: ncipollo/release-action@v1
 #        with:
@@ -71,7 +67,5 @@ jobs:
 #          prerelease: steps.check-version.outputs.prerelease == 'true'
 
       - name: Publish to PyPI
-        env:
-          POETRY_PYPI_TOKEN_PYPI: ${{ secrets.PYPI_TOKEN }}
-        run: poetry publish
+        run: poetry publish --build --username __token__ --password ${{ secrets.PYPI_TOKEN }}
 
