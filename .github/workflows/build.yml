@@ -33,7 +33,12 @@ jobs:
         shell: bash
         run: poetry config virtualenvs.in-project true
 
-      - name: Run pytest
+      - name: Build package
         shell: bash
         run: poetry build -n
+
+      - uses: actions/upload-artifact@v2
+        with:
+          name: packages
+          path: dist/*
 
