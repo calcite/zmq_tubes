@@ -4,14 +4,9 @@ name: Devel
 
 # Controls when the workflow will run
 on:
-  push:
-#    paths:
-#      - '*.py'
-    branches:
-      - '**'
   pull_request:
-#    paths:
-#      - '*.py'
+    paths:
+      - '*.py'
     branches:
       - '**'
 
