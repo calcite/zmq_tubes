@@ -75,6 +75,7 @@ jobs:
 #          prerelease: steps.check-version.outputs.prerelease == 'true'
 
       - name: Publish to PyPI
+        shell: bash
         env:
           POETRY_PYPI_TOKEN_PYPI: ${{ secrets.PYPI_TOKEN }}
         run: |
