@@ -7,8 +7,9 @@ on:
   push:
     paths:
       - '*.py'
-      
-flake8:
+
+jobs:
+  flake8:
     runs-on: ubuntu-latest
     steps:
       - name: Setup Python
