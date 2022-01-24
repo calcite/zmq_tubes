@@ -28,6 +28,12 @@ TUBE_TYPE_MAPPING = {
 }
 
 
+def flatten(l):
+    if isinstance(l, list):
+        return sum(l, [])
+    return l
+
+
 class TubeMessage:
 
     @staticmethod
@@ -389,7 +395,7 @@ class TubeNode:
         """
         returns a list of all registered tubes
         """
-        return self._tubes.values()
+        return flatten(self._tubes.values())
 
     def connect(self):
         """
@@ -424,7 +430,7 @@ class TubeNode:
         """
         returns the Tube with the name
         """
-        tubes = self._tubes.values()
+        tubes = flatten(self._tubes.values())
         for tube in tubes:
             if tube.name == name:
                 return tube
@@ -437,23 +443,28 @@ class TubeNode:
         if isinstance(topics, str):
             topics = [topics]
         for topic in topics:
-            if self._tubes.get_topic(topic):
+            tubes = self._tubes.get_topic(topic)
+            if tubes:
                 self.logger.warning(f"The tube '{tube.name}' overrides "
                                     f"the exist topic: {topic}")
+                tubes.append(tube)
             else:
                 self.logger.debug(f"The tube '{tube.name}' was registered to "
                                   f"the topic: {topic}")
-            self._tubes.set_topic(topic, tube)
+                tubes = [tube, ]
+            self._tubes.set_topic(topic, tubes)
 
     def get_callback_by_topic(self, topic: str) -> Callable:
-        return self._callbacks.match(topic)
+        res = self._callbacks.match(topic)
+        return res
 
     def send(self, topic: str, payload=None, tube=None):
         if not tube:
-            tube = self.get_tube_by_topic(topic)
-        if not tube:
-            raise TubeTopicNotConfigured(f'The topic "{topic}" is not assign '
-                                         f'to any Tube.')
+            tubes = self.get_tube_by_topic(topic)
+            if not tubes:
+                raise TubeTopicNotConfigured(f'The topic "{topic}" is not '
+                                             f'assign to any Tube.')
+            tube = tubes[0]
         tube.send(topic, payload)
 
     async def request(self, topic: str, payload=None, timeout=30) \
@@ -462,29 +473,33 @@ class TubeNode:
         if not tube:
             raise TubeTopicNotConfigured(f'The topic "{topic}" is not assign '
                                          f'to any Tube.')
-        res = await tube.request(topic, payload, timeout)
+        res = await tube[0].request(topic, payload, timeout)
         return res
 
     def publish(self, topic: str, payload=None):
-        tube = self.get_tube_by_topic(topic)
-        if not tube:
+        tubes = self.get_tube_by_topic(topic)
+        if not tubes:
             raise TubeTopicNotConfigured(f'The topic "{topic}" is not assign '
                                          f'to any Tube.')
-        if tube.tube_type != zmq.PUB:
+        tube = [t for t in tubes if t.tube_type == zmq.PUB].pop()
+        if not tube:
             raise TubeMethodNotSupported(
-                f"The tube '{tube.name}' (type: '{tube.tube_type_name}') "
+                f"The tube '{tubes[0].name}' "
+                f"(type: '{tubes[0].tube_type_name}') "
                 f"can not publish message."
             )
-        self.send(topic, payload)
+        self.send(topic, payload, tube)
 
     def subscribe(self, topic: str, fce: Callable):
-        tube = self.get_tube_by_topic(topic)
-        if not tube:
+        tubes = self.get_tube_by_topic(topic)
+        if not tubes:
             raise TubeTopicNotConfigured(f'The topic "{topic}" is not assign '
                                          f'to any Tube.')
-        if tube.tube_type != zmq.SUB:
+        tube = [t for t in tubes if t.tube_type == zmq.SUB].pop()
+        if not tube:
             raise TubeMethodNotSupported(
-                f"The tube '{tube.name}' (type: '{tube.tube_type_name}') "
+                f"The tube '{tubes[0].name}' "
+                f"(type: '{tubes[0].tube_type_name}') "
                 f"can not subscribe topic."
             )
         self.register_handler(topic, fce)

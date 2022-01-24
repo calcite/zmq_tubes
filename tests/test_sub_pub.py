@@ -143,3 +143,53 @@ def test_pub_subs():
     )
     assert len(data) == 0
     assert len(data2) == 0
+
+
+def test_pub_sub_on_same_node():
+    """
+        The publisher and client on the same node.
+    """
+    data = ['PUB0', 'PUB1']
+
+    async def pub_task(tube, topic, name):
+        asyncio.current_task().set_name(name)
+        for it in range(0, 2):
+            tube.publish(topic, f"PUB{it}")
+            await asyncio.sleep(1)
+
+    async def sub_task(tube, topic, data, name):
+        async def __process(response):
+            assert response.payload in data
+            data.remove(response.payload)
+        asyncio.current_task().set_name(name)
+        tube.subscribe(topic, __process)
+        await tube.start()
+
+    tube_sub = Tube(
+        name='SUB1',
+        addr=ADDR,
+        tube_type=zmq.SUB
+    )
+
+    tube_pub = Tube(
+        name='PUB',
+        addr=ADDR,
+        server=True,
+        tube_type=zmq.PUB
+    )
+    tube_pub.connect()
+
+    node_pub = TubeNode()
+    node_pub.register_tube(tube_pub, f"{TOPIC}/#")
+    node_pub.register_tube(tube_sub, f"{TOPIC}/#")
+    node_pub.connect()
+
+    asyncio.run(
+        run_test_tasks(
+            [pub_task(node_pub, TOPIC, 'PUB')],
+            [
+                sub_task(node_pub, f"{TOPIC}/#", data, 'SUB1'),
+            ]
+        )
+    )
+    assert len(data) == 0
