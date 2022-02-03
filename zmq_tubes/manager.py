@@ -479,7 +479,7 @@ class TubeNode:
         if not tube:
             raise TubeTopicNotConfigured(f'The topic "{topic}" is not assigned '
                                          f'to any Tube for request.')
-        res = await tube[0].request(topic, payload, timeout)
+        res = await tube.request(topic, payload, timeout)
         return res
 
     def publish(self, topic: str, payload=None):

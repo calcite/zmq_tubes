@@ -51,7 +51,7 @@ def test_load_schema_hierarchy():
     node = TubeNode(schema=yaml.safe_load(schema))
 
     assert len(node.tubes) == 2
-    assert node.get_tube_by_topic('foo/aaa')[0].name == 'tube1'
-    assert node.get_tube_by_topic('foo/test/aaa')[0].name == 'tube2'
-    assert node.get_tube_by_topic('xxx/bar')[0].name == 'tube1'
-    assert node.get_tube_by_topic('xxx/bar/test')[0].name == 'tube2'
+    assert node.get_tube_by_topic('foo/aaa').name == 'tube1'
+    assert node.get_tube_by_topic('foo/test/aaa').name == 'tube2'
+    assert node.get_tube_by_topic('xxx/bar').name == 'tube1'
+    assert node.get_tube_by_topic('xxx/bar/test').name == 'tube2'
