@@ -28,10 +28,10 @@ TUBE_TYPE_MAPPING = {
 }
 
 
-def flatten(l):
-    if isinstance(l, list):
-        return sum(l, [])
-    return l
+def flatten(llist):
+    if isinstance(llist, list):
+        return sum(llist, [])
+    return llist
 
 
 class TubeMessage:
@@ -420,11 +420,17 @@ class TubeNode:
                 tube = Tube(**tube_info)
                 self.register_tube(tube, tube_info.get('topics', []))
 
-    def get_tube_by_topic(self, topic: str) -> Tube:
+    def get_tube_by_topic(self, topic: str, types=None) -> Tube:
         """
         returns the Tube which is assigned to topic.
+        Optional: we can specify a type of tube.
         """
-        return self._tubes.match(topic)
+        res = self._tubes.match(topic)
+        if types:
+            res = [t for t in res if t.tube_type in types]
+        if isinstance(res, list):
+            res = res.pop()
+        return res
 
     def get_tube_by_name(self, name: str) -> Tube:
         """
@@ -445,8 +451,8 @@ class TubeNode:
         for topic in topics:
             tubes = self._tubes.get_topic(topic)
             if tubes:
-                self.logger.warning(f"The tube '{tube.name}' overrides "
-                                    f"the exist topic: {topic}")
+                self.logger.info(f"The tube '{tube.name}' overrides "
+                                 f"the exist topic: {topic}")
                 tubes.append(tube)
             else:
                 self.logger.debug(f"The tube '{tube.name}' was registered to "
@@ -460,52 +466,40 @@ class TubeNode:
 
     def send(self, topic: str, payload=None, tube=None):
         if not tube:
-            tubes = self.get_tube_by_topic(topic)
-            if not tubes:
+            tube = self.get_tube_by_topic(topic, [zmq.DEALER])
+            if not tube:
                 raise TubeTopicNotConfigured(f'The topic "{topic}" is not '
-                                             f'assign to any Tube.')
-            tube = tubes[0]
+                                             f'assigned to any Tube for '
+                                             f'dealer.')
         tube.send(topic, payload)
 
     async def request(self, topic: str, payload=None, timeout=30) \
             -> TubeMessage:
-        tube = self.get_tube_by_topic(topic)
+        tube = self.get_tube_by_topic(topic, [zmq.REQ])
         if not tube:
-            raise TubeTopicNotConfigured(f'The topic "{topic}" is not assign '
-                                         f'to any Tube.')
-        res = await tube[0].request(topic, payload, timeout)
+            raise TubeTopicNotConfigured(f'The topic "{topic}" is not assigned '
+                                         f'to any Tube for request.')
+        res = await tube.request(topic, payload, timeout)
         return res
 
     def publish(self, topic: str, payload=None):
-        tubes = self.get_tube_by_topic(topic)
-        if not tubes:
-            raise TubeTopicNotConfigured(f'The topic "{topic}" is not assign '
-                                         f'to any Tube.')
-        tube = [t for t in tubes if t.tube_type == zmq.PUB].pop()
+        tube = self.get_tube_by_topic(topic, [zmq.PUB])
         if not tube:
-            raise TubeMethodNotSupported(
-                f"The tube '{tubes[0].name}' "
-                f"(type: '{tubes[0].tube_type_name}') "
-                f"can not publish message."
-            )
+            raise TubeTopicNotConfigured(f'The topic "{topic}" is not assigned '
+                                         f'to any Tube for publishing.')
         self.send(topic, payload, tube)
 
     def subscribe(self, topic: str, fce: Callable):
-        tubes = self.get_tube_by_topic(topic)
-        if not tubes:
-            raise TubeTopicNotConfigured(f'The topic "{topic}" is not assign '
-                                         f'to any Tube.')
-        tube = [t for t in tubes if t.tube_type == zmq.SUB].pop()
+        tube = self.get_tube_by_topic(topic, [zmq.SUB])
         if not tube:
-            raise TubeMethodNotSupported(
-                f"The tube '{tubes[0].name}' "
-                f"(type: '{tubes[0].tube_type_name}') "
-                f"can not subscribe topic."
-            )
-        self.register_handler(topic, fce)
+            raise TubeTopicNotConfigured(f'The topic "{topic}" is not assigned '
+                                         f'to any Tube for subscribe.')
+        self.register_handler(topic, fce, tube=tube)
 
-    def register_handler(self, topic: str, fce: Callable):
-        tube = self.get_tube_by_topic(topic)
+    def register_handler(self, topic: str, fce: Callable, tube: Tube = None):
+        if not tube:
+            tube = self.get_tube_by_topic(topic, [zmq.SUB, zmq.REP,
+                                                  zmq.ROUTER, zmq.DEALER])
         if not tube:
             self.logger.warning(f"This topic '{topic}' does not have any "
                                 f"assigned tube. This callback will be "

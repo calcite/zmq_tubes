@@ -58,3 +58,50 @@ def test_req_resp():
             [response_task(node_resp, f'{TOPIC}/#')]
         )
     )
+
+
+def test_req_resp_on_same_node():
+    """
+        The req/resp and client on the same node.
+    """
+
+    async def request_task(node, topic, name, number=2, timeout=30):
+        asyncio.current_task().set_name(name)
+        for it in range(0, number):
+            resp = await node.request(topic, f"request-{name}-{it}",
+                                      timeout=timeout)
+            assert resp.payload == f"response-{name}-{it}"
+
+    async def response_task(node, topic):
+        async def __process(message):
+            assert message.payload[0:8] == 'request-'
+            return f'response-{message.payload[8:]}'
+        asyncio.current_task().set_name('RESP')
+        node.register_handler(topic, __process)
+        await node.start()
+
+    tube1 = Tube(
+        name='REQ',
+        addr=ADDR,
+        tube_type=zmq.REQ
+    )
+
+    tube2 = Tube(
+        name='REP',
+        addr=ADDR,
+        server=True,
+        tube_type=zmq.REP
+    )
+    tube2.connect()
+
+    node = TubeNode()
+    node.register_tube(tube1, f"{TOPIC}/#")
+    node.register_tube(tube2, f"{TOPIC}/#")
+    node.connect()
+
+    asyncio.run(
+        run_test_tasks(
+            [request_task(node, TOPIC, 'REQ1')],
+            [response_task(node, f'{TOPIC}/#')]
+        )
+    )
