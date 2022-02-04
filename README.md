@@ -53,7 +53,7 @@ from zmq_tubes import TubeNode, TubeMessage
 
 async def handler(request: TubeMessage):
   print(request.payload)
-  return request.get_response('response')
+  return request.create_response('response')
 
 
 with open('test.yml', 'r+') as fd:    
@@ -81,7 +81,7 @@ from zmq_tubes import Tube, TubeNode, TubeMessage
 async def handler(request: TubeMessage):
   print(request.payload)
   return 'answer'
-  # or return request.get_response('response')
+  # or return request.create_response('response')
 
 
 tube = Tube(
@@ -179,7 +179,7 @@ async def handler(request: TubeMessage):
   print(request.payload)
   if request.payload == 'wait':
     await asyncio.sleep(10)
-  return request.get_response(request.payload)
+  return request.create_response(request.payload)
 
 
 tube = Tube(
@@ -238,7 +238,7 @@ from zmq_tubes import Tube, TubeNode, TubeMessage
 async def handler(request: TubeMessage):
   print(request.payload)
   return 'response'
-  # or return requset.get_response('response')
+  # or return requset.create_response('response')
 
 
 tube = Tube(
@@ -297,7 +297,7 @@ async def handler(request: TubeMessage):
   print(request.payload)
   if request.payload == 'wait':
     await asyncio.sleep(10)
-  return request.get_response(request.payload)
+  return request.create_response(request.payload)
 
 
 tube = Tube(

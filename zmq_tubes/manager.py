@@ -428,6 +428,8 @@ class TubeNode:
         res = self._tubes.match(topic)
         if types:
             res = [t for t in res if t.tube_type in types]
+        if not res:
+            return None
         if isinstance(res, list):
             res = res.pop()
         return res
