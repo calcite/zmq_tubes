@@ -382,13 +382,14 @@ class Tube:
 
 class TubeNode:
 
-    def __init__(self, *, schema=None):
+    def __init__(self, *, schema=None, warning_not_mach_topic=True):
         self.logger = logging.getLogger(self.__class__.__name__)
         self._tubes = TopicMatcher()
         self._callbacks = TopicMatcher()
         if schema:
             self.parse_schema(schema)
         self._stop_main_loop = False
+        self.warning_not_mach_topic = warning_not_mach_topic
 
     @property
     def tubes(self) -> [Tube]:
@@ -550,10 +551,11 @@ class TubeNode:
                 request = await tube.receive_data(raw_socket=raw_socket)
                 callbacks = self.get_callback_by_topic(request.topic)
                 if not callbacks:
-                    self.logger.warning(
-                        f"Incoming message does not match any topic, "
-                        f"it is ignored (topic: {request.topic})"
-                    )
+                    if self.warning_not_mach_topic:
+                        self.logger.warning(
+                            f"Incoming message does not match any topic, "
+                            f"it is ignored (topic: {request.topic})"
+                        )
                     continue
                 # self.logger.debug(
                 #     f"Incoming message for tube '{tube.name}'")
