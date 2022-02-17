@@ -3,6 +3,7 @@ import json
 import logging
 from collections.abc import Callable
 from functools import singledispatchmethod
+import time
 
 import zmq
 from zmq.asyncio import Poller, Context, Socket
@@ -281,6 +282,9 @@ class Tube:
         raw_socket.__dict__['tube'] = self
         for opt, val in self._sockopts.items():
             raw_socket.setsockopt(opt, val)
+        if self._tube_type == zmq.PUB:
+            # This solves a problem with losing the first message
+            time.sleep(.1)
         return raw_socket
 
     def connect(self):
@@ -427,7 +431,7 @@ class TubeNode:
         Optional: we can specify a type of tube.
         """
         res = self._tubes.match(topic)
-        if types:
+        if res and types:
             res = [t for t in res if t.tube_type in types]
         if not res:
             return None
@@ -463,9 +467,20 @@ class TubeNode:
                 tubes = [tube, ]
             self._tubes.set_topic(topic, tubes)
 
-    def get_callback_by_topic(self, topic: str) -> Callable:
-        res = self._callbacks.match(topic)
-        return res
+    def get_callback_by_topic(self, topic: str, tube=None) -> Callable:
+        """
+        This return callbacks for the topic.
+        If any of the callbacks is assigned to the tube,
+        it is returned only these. Otherwise, this returns all unassigned.
+        """
+        callbacks = []
+        callbacks_for_tube = []
+        for clb in self._callbacks.match(topic):
+            if not hasattr(clb, 'tube'):
+                callbacks.append(clb)
+            elif clb.tube == tube:
+                callbacks_for_tube.append(clb)
+        return callbacks_for_tube if callbacks_for_tube else callbacks
 
     def send(self, topic: str, payload=None, tube=None):
         if not tube:
@@ -500,13 +515,18 @@ class TubeNode:
         self.register_handler(topic, fce, tube=tube)
 
     def register_handler(self, topic: str, fce: Callable, tube: Tube = None):
-        if not tube:
-            tube = self.get_tube_by_topic(topic, [zmq.SUB, zmq.REP,
-                                                  zmq.ROUTER, zmq.DEALER])
-        if not tube:
-            self.logger.warning(f"This topic '{topic}' does not have any "
-                                f"assigned tube. This callback will be "
-                                f"never fired.")
+        """
+        We can register more handlers for SUB and all will be executed.
+        For REP, ROUTER and DEALER, there will be executed only
+        the last registered.
+        If we want to use DEALER as server and client on the same node,
+        we have to specify which tube will be used for this handler.
+        :param topic: str
+        :param fce: Callable
+        :param tube: Tube - only for the case DEALER x DEALER on the same node.
+        """
+        if tube:
+            fce.tube = tube
         self._callbacks.get_topic(topic, set_default=[]).append(fce)
 
     def stop(self):
@@ -519,7 +539,7 @@ class TubeNode:
                 if _request.tube.tube_type in [zmq.ROUTER]:
                     raise TubeMessageError(
                         f"The response of the {_request.tube.tube_type_name} "
-                        f"callback has to be a instamce of TubeMessage class.")
+                        f"callback has to be a instance of TubeMessage class.")
                 _payload = response
                 response = request.create_response()
                 response.payload = _payload
@@ -549,7 +569,7 @@ class TubeNode:
                 raw_socket = event[0]
                 tube: Tube = raw_socket.__dict__['tube']
                 request = await tube.receive_data(raw_socket=raw_socket)
-                callbacks = self.get_callback_by_topic(request.topic)
+                callbacks = self.get_callback_by_topic(request.topic, tube)
                 if not callbacks:
                     if self.warning_not_mach_topic:
                         self.logger.warning(
@@ -557,8 +577,6 @@ class TubeNode:
                             f"it is ignored (topic: {request.topic})"
                         )
                     continue
-                # self.logger.debug(
-                #     f"Incoming message for tube '{tube.name}'")
                 if tube.tube_type == zmq.SUB:
                     for callback in callbacks:
                         loop.create_task(callback(request), name='zmq/sub')
