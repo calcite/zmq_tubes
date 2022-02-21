@@ -1,7 +1,7 @@
 import asyncio
 import zmq
 
-from helpers import run_test_tasks
+from ..helpers import run_test_tasks
 from zmq_tubes import Tube, TubeNode, TubeMessage
 
 ADDR = 'ipc:///tmp/req_router.pipe'
@@ -10,23 +10,23 @@ TOPIC = 'req'
 
 def test_req():
 
-    async def request_task(tube, topic, name, number=4, timeout=30):
+    async def request_task(node, topic, name, number=4, timeout=30):
         asyncio.current_task().set_name(name)
         for it in range(0, number):
-            response = await tube.request(topic, f"request-{name}-{it}",
+            response = await node.request(topic, f"request-{name}-{it}",
                                           timeout=timeout)
             assert response.payload == f"response-{name}-{it}"
 
-    async def response_task(tube, topic, name):
+    async def response_task(node, topic, name):
         async def __process(request: TubeMessage):
             assert request.payload[0:8] == 'request-'
             if 'REQ2' in request.payload:
-                await asyncio.sleep(15)
+                await asyncio.sleep(2)
             return request.create_response(f'response-{request.payload[8:]}')
 
         asyncio.current_task().set_name(name)
-        tube.register_handler(topic, __process)
-        await tube.start()
+        node.register_handler(topic, __process)
+        await node.start()
 
     tube_req1 = Tube(
         name='REQ1',
@@ -52,7 +52,6 @@ def test_req():
 
     node_router = TubeNode()
     node_router.register_tube(tube_router, f"{TOPIC}/#")
-    node_router.connect()
 
     asyncio.run(
         run_test_tasks(
@@ -68,21 +67,21 @@ def test_req_router_on_same_node():
         The REQ/ROUTER and client on the same node.
     """
 
-    async def request_task(tube, topic, name, number=4, timeout=30):
+    async def request_task(node, topic, name, number=4, timeout=30):
         asyncio.current_task().set_name(name)
         for it in range(0, number):
-            response = await tube.request(topic, f"request-{name}-{it}",
+            response = await node.request(topic, f"request-{name}-{it}",
                                           timeout=timeout)
             assert response.payload == f"response-{name}-{it}"
 
-    async def response_task(tube, topic, name):
+    async def response_task(node, topic, name):
         async def __process(request: TubeMessage):
             assert request.payload[0:8] == 'request-'
             return request.create_response(f'response-{request.payload[8:]}')
 
         asyncio.current_task().set_name(name)
-        tube.register_handler(topic, __process)
-        await tube.start()
+        node.register_handler(topic, __process)
+        await node.start()
 
     tube1 = Tube(
         name='REQ',
@@ -96,12 +95,10 @@ def test_req_router_on_same_node():
         server=True,
         tube_type=zmq.ROUTER
     )
-    tube2.connect()
 
     node = TubeNode()
     node.register_tube(tube1, f"{TOPIC}/#")
     node.register_tube(tube2, f"{TOPIC}/#")
-    node.connect()
 
     asyncio.run(
         run_test_tasks(

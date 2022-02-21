@@ -14,6 +14,15 @@ The whole system is hierarchical, based on topics
 - **TubeNode** - This represents an application interface for communication via tubes.
 
 
+## Asyncion / Threading
+The library support bot method. 
+
+```python
+from zmq_tubes import TubeNode, Tube            # Asyncio classes
+from zmq_tubes.threads import TubeNode, Tube    # Threads classes
+```
+
+
 ## Usage:
 
 ### Node definitions in yml file 
@@ -155,6 +164,9 @@ tube = Tube(
   addr='ipc:///tmp/sub_pub.pipe',
   tube_type='PUB'
 )
+# In the case of publishing, the first message is very often
+# lost. The workaround is to connect the tube manually as soon as possible.
+tube.connect()
 
 node = TubeNode()
 node.register_tube(tube, 'test/#')
