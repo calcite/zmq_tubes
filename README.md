@@ -14,6 +14,15 @@ The whole system is hierarchical, based on topics
 - **TubeNode** - This represents an application interface for communication via tubes.
 
 
+## Asyncion / Threading
+The library support bot method. 
+
+```python
+from zmq_tubes import TubeNode, Tube            # Asyncio classes
+from zmq_tubes.threads import TubeNode, Tube    # Threads classes
+```
+
+
 ## Usage:
 
 ### Node definitions in yml file 
