@@ -1,17 +1,17 @@
 import asyncio
 import logging
 import sys
-from time import sleep
 
 import zmq
 
-from helpers import run_test_tasks
+from ..helpers import run_test_tasks
 from zmq_tubes import Tube, TubeNode, TubeMessage
 
 ADDR = 'ipc:///tmp/dealer_rep.pipe'
 TOPIC = 'req'
 
 logging.basicConfig(level=logging.DEBUG, stream=sys.stdout)
+
 
 def test_dealer_reps():
     data = ['response-DEALER_REQ-0', 'response-DEALER_REQ-1']

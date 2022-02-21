@@ -155,6 +155,9 @@ tube = Tube(
   addr='ipc:///tmp/sub_pub.pipe',
   tube_type='PUB'
 )
+# In the case of publishing, the first message is very often
+# lost. The workaround is to connect the tube manually as soon as possible.
+tube.connect()
 
 node = TubeNode()
 node.register_tube(tube, 'test/#')

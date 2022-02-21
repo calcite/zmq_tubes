@@ -3,7 +3,6 @@ import json
 import logging
 from collections.abc import Callable
 from functools import singledispatchmethod
-import time
 
 import zmq
 from zmq.asyncio import Poller, Context, Socket
@@ -226,6 +225,10 @@ class Tube:
                                   zmq.DEALER]
 
     @property
+    def is_connected(self):
+        return self._socket is not None
+
+    @property
     def raw_socket(self) -> Socket:
         """
         returns a native ZMQ Socket. For persistent tubes this returns still
@@ -272,7 +275,7 @@ class Tube:
         if self.is_server:
             self.logger.debug(
                 f"The tube '{self.name}' (ZMQ.{self.tube_type_name}) "
-                f"binds to the port {self.addr}.")
+                f"binds to the port {self.addr}")
             raw_socket.bind(self.addr)
         else:
             self.logger.debug(
@@ -282,9 +285,6 @@ class Tube:
         raw_socket.__dict__['tube'] = self
         for opt, val in self._sockopts.items():
             raw_socket.setsockopt(opt, val)
-        if self._tube_type == zmq.PUB:
-            # This solves a problem with losing the first message
-            time.sleep(.1)
         return raw_socket
 
     def connect(self):
@@ -292,7 +292,8 @@ class Tube:
         For persistent tubes, this open connection (connect/bind) to address.
         """
         if self.is_persistent and self._socket is None:
-            return self.raw_socket
+            self.raw_socket
+        return self
 
     def close(self):
         """
@@ -501,6 +502,10 @@ class TubeNode:
         return res
 
     def publish(self, topic: str, payload=None):
+        """
+        In the case with asyncio, the first message is very often lost.
+        The workaround is to connect the tube manually as soon as possible.
+        """
         tube = self.get_tube_by_topic(topic, [zmq.PUB])
         if not tube:
             raise TubeTopicNotConfigured(f'The topic "{topic}" is not assigned '
@@ -541,7 +546,7 @@ class TubeNode:
                         f"The response of the {_request.tube.tube_type_name} "
                         f"callback has to be a instance of TubeMessage class.")
                 _payload = response
-                response = request.create_response()
+                response = _request.create_response()
                 response.payload = _payload
             else:
                 if _request.tube.tube_type in [zmq.ROUTER] and\
@@ -549,7 +554,7 @@ class TubeNode:
                     raise TubeMessageError(
                         "The TubeMessage response object doesn't be created "
                         "from request object.")
-            request.tube.send(response)
+            _request.tube.send(response)
 
         poller = Poller()
         loop = asyncio.get_event_loop()

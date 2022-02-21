@@ -1,7 +1,7 @@
 import asyncio
 import zmq
 
-from helpers import run_test_tasks
+from ..helpers import run_test_tasks
 from zmq_tubes import Tube, TubeNode, TubeMessage
 
 ADDR = 'ipc:///tmp/dealer_router.pipe'

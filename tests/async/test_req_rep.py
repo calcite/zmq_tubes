@@ -1,7 +1,7 @@
 import asyncio
 import zmq
 
-from helpers import run_test_tasks
+from ..helpers import run_test_tasks
 from zmq_tubes import Tube, TubeNode
 
 ADDR = 'ipc:///tmp/req_resp.pipe'
@@ -49,7 +49,6 @@ def test_req_resp():
 
     node_resp = TubeNode()
     node_resp.register_tube(tube_resp, f"{TOPIC}/#")
-    node_resp.connect()
 
     asyncio.run(
         run_test_tasks(
@@ -92,12 +91,10 @@ def test_req_resp_on_same_node():
         server=True,
         tube_type=zmq.REP
     )
-    tube2.connect()
 
     node = TubeNode()
     node.register_tube(tube1, f"{TOPIC}/#")
     node.register_tube(tube2, f"{TOPIC}/#")
-    node.connect()
 
     asyncio.run(
         run_test_tasks(
