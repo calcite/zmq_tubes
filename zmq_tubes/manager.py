@@ -387,6 +387,8 @@ class Tube:
 
 class TubeNode:
 
+    __TUBE_CLASS = Tube
+
     def __init__(self, *, schema=None, warning_not_mach_topic=True):
         self.logger = logging.getLogger(self.__class__.__name__)
         self._tubes = TopicMatcher()
@@ -423,7 +425,7 @@ class TubeNode:
         """
         if 'tubes' in schema:
             for tube_info in schema['tubes']:
-                tube = Tube(**tube_info)
+                tube = self.__TUBE_CLASS(**tube_info)
                 self.register_tube(tube, tube_info.get('topics', []))
 
     def get_tube_by_topic(self, topic: str, types=None) -> Tube:

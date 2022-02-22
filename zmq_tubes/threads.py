@@ -79,6 +79,8 @@ class Tube(AsyncTube):
 
 
 class TubeNode(AsyncTubeNode):
+    __TUBE_CLASS = Tube
+
     def request(self, topic: str, payload=None, timeout=30) \
             -> TubeMessage:
         tube = self.get_tube_by_topic(topic, [zmq.REQ])
