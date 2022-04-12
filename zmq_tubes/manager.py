@@ -473,7 +473,7 @@ class TubeNode:
         """
         callbacks = []
         callbacks_for_tube = []
-        for clb in self._callbacks.match(topic):
+        for clb in self._callbacks.match(topic) or []:
             if 'tube' not in clb.__dict__:
                 callbacks.append(clb)
             elif clb.__dict__['tube'] == tube:
