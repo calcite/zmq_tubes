@@ -387,6 +387,8 @@ class Tube:
 
 class TubeNode:
 
+    __TUBE_CLASS = Tube
+
     def __init__(self, *, schema=None, warning_not_mach_topic=True):
         self.logger = logging.getLogger(self.__class__.__name__)
         self._tubes = TopicMatcher()
@@ -423,7 +425,7 @@ class TubeNode:
         """
         if 'tubes' in schema:
             for tube_info in schema['tubes']:
-                tube = Tube(**tube_info)
+                tube = self.__TUBE_CLASS(**tube_info)
                 self.register_tube(tube, tube_info.get('topics', []))
 
     def get_tube_by_topic(self, topic: str, types=None) -> Tube:
@@ -457,15 +459,10 @@ class TubeNode:
         if isinstance(topics, str):
             topics = [topics]
         for topic in topics:
-            tubes = self._tubes.get_topic(topic)
-            if tubes:
-                self.logger.info(f"The tube '{tube.name}' overrides "
-                                 f"the exist topic: {topic}")
-                tubes.append(tube)
-            else:
-                self.logger.debug(f"The tube '{tube.name}' was registered to "
-                                  f"the topic: {topic}")
-                tubes = [tube, ]
+            tubes = self._tubes.get_topic(topic) or []
+            tubes.append(tube)
+            self.logger.debug(f"The tube '{tube.name}' was registered to "
+                              f"the topic: {topic}")
             self._tubes.set_topic(topic, tubes)
 
     def get_callback_by_topic(self, topic: str, tube=None) -> Callable:
@@ -476,10 +473,10 @@ class TubeNode:
         """
         callbacks = []
         callbacks_for_tube = []
-        for clb in self._callbacks.match(topic):
-            if not hasattr(clb, 'tube'):
+        for clb in self._callbacks.match(topic) or []:
+            if 'tube' not in clb.__dict__:
                 callbacks.append(clb)
-            elif clb.tube == tube:
+            elif clb.__dict__['tube'] == tube:
                 callbacks_for_tube.append(clb)
         return callbacks_for_tube if callbacks_for_tube else callbacks
 
@@ -531,7 +528,7 @@ class TubeNode:
         :param tube: Tube - only for the case DEALER x DEALER on the same node.
         """
         if tube:
-            fce.tube = tube
+            fce.__dict__['tube'] = tube
         self._callbacks.get_topic(topic, set_default=[]).append(fce)
 
     def stop(self):
