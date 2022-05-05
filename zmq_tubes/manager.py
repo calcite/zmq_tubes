@@ -133,6 +133,7 @@ class Tube:
         self._socket: Socket = None
         self.context = Context().instance()
         self.tube_info = kwargs
+        self.is_closed = False
         self._sockopts = {}
         self.sockopts = kwargs.get('sockopts', {})
         self.addr = kwargs.get('addr')
@@ -293,6 +294,7 @@ class Tube:
         """
         if self.is_persistent and self._socket is None:
             self.raw_socket
+        self.is_closed = False
         return self
 
     def close(self):
@@ -301,6 +303,7 @@ class Tube:
         """
         if self.is_persistent and self._socket:
             self.raw_socket.close()
+        self.is_closed = True
 
     @singledispatchmethod
     def send(self, arg):

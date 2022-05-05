@@ -1,6 +1,7 @@
 import asyncio
 import zmq
 
+from zmq_tubes.manager import TubeMessageTimeout
 from ..helpers import run_test_tasks
 from zmq_tubes import Tube, TubeNode
 
@@ -100,5 +101,49 @@ def test_req_resp_on_same_node():
         run_test_tasks(
             [request_task(node, TOPIC, 'REQ1')],
             [response_task(node, f'{TOPIC}/#')]
+        )
+    )
+
+
+def test_req_resp_timeout():
+
+    async def request_task(node, topic, name):
+        asyncio.current_task().set_name(name)
+        try:
+            await node.request(topic, f"request", timeout=1)
+            assert False, "The TubeMessageTimeout exception was not fired."
+        except TubeMessageTimeout:
+            pass
+
+    async def response_task(node, topic):
+        async def __process(message):
+            await asyncio.sleep(5)
+            return f'response'
+        asyncio.current_task().set_name('RESP')
+        node.register_handler(topic, __process)
+        await node.start()
+
+    tube_req1 = Tube(
+        name='REQ',
+        addr=ADDR,
+        tube_type=zmq.REQ
+    )
+    tube_resp = Tube(
+        name='RESP',
+        addr=ADDR,
+        server=True,
+        tube_type=zmq.REP
+    )
+    node_req1 = TubeNode()
+    node_req1.register_tube(tube_req1, f"{TOPIC}/#")
+
+    node_resp = TubeNode()
+    node_resp.register_tube(tube_resp, f"{TOPIC}/#")
+
+    asyncio.run(
+        run_test_tasks(
+            [request_task(node_req1, f'{TOPIC}/aaa', 'REQ1')],
+            [response_task(node_resp, f'{TOPIC}/#')],
+            sleep=5
         )
     )

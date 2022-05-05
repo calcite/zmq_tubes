@@ -51,15 +51,20 @@ class Tube(AsyncTube):
             )
         try:
             self.send(request)
-            if request.raw_socket.poll(timeout * 1000) == zmq.POLLIN:
-                response = self.receive_data(raw_socket=request.raw_socket)
-                if response.topic != request.topic:
-                    raise TubeMessageError(
-                        f"The response comes to different topic "
-                        f"({request.topic} != {response.topic}).")
-                return response
-            else:
-                self.logger.error("The request timout")
+            # if request.raw_socket.poll(timeout * 1000) == zmq.POLLIN:
+            counter = timeout
+            while (res := request.raw_socket.poll(1000)) != 0 or \
+                         (counter != 0 and not self.is_closed):
+                if res != 0:
+                    response = self.receive_data(raw_socket=request.raw_socket)
+                    if response.topic != request.topic:
+                        raise TubeMessageError(
+                            f"The response comes to different topic "
+                            f"({request.topic} != {response.topic}).")
+                    return response
+                elif counter == 0:
+                    self.logger.error("The request timout")
+                counter -= 1
         finally:
             if not self.is_persistent:
                 self.logger.debug(f"Close tube {self.name}")

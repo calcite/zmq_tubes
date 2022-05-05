@@ -1,5 +1,8 @@
+import time
+
 import zmq
 
+from zmq_tubes.manager import TubeMessageTimeout
 from ..helpers import run_test_threads, wrapp, cleanup_threads
 from zmq_tubes.threads import Tube, TubeNode
 
@@ -97,3 +100,46 @@ def test_req_resp_on_same_node():
         [request_task(node, TOPIC, 'REQ1')],
         [response_task(node, f'{TOPIC}/#')]
     )
+
+
+@cleanup_threads
+def test_req_resp_timeout():
+
+    @wrapp
+    def request_task(node, topic):
+        try:
+            node.request(topic, f"request", timeout=1)
+            assert False, "The TubeMessageTimeout exception was not fired."
+        except TubeMessageTimeout:
+            pass
+
+    @wrapp
+    def response_task(node, topic):
+        def __process(message):
+            time.sleep(3)
+            return f'response'
+        node.register_handler(topic, __process)
+        node.start()
+
+    tube_req1 = Tube(
+        name='REQ1',
+        addr=ADDR,
+        tube_type=zmq.REQ
+    )
+    tube_resp = Tube(
+        name='RESP',
+        addr=ADDR,
+        server=True,
+        tube_type=zmq.REP
+    )
+    node_req1 = TubeNode()
+    node_req1.register_tube(tube_req1, f"{TOPIC}/#")
+
+    node_resp = TubeNode()
+    node_resp.register_tube(tube_resp, f"{TOPIC}/#")
+
+    run_test_threads(
+        [request_task(node_req1, f'{TOPIC}/aaa')],
+        [response_task(node_resp, f'{TOPIC}/#')]
+    )
+

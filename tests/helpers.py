@@ -13,7 +13,7 @@ def _handle_task_result(task: asyncio.Task) -> None:
         logging.exception('Exception raised by task = %r', task)
 
 
-async def run_test_tasks(finite_tasks, infinite_tasks):
+async def run_test_tasks(finite_tasks, infinite_tasks, sleep=None):
     loop = asyncio.get_running_loop()
 
     infinite = set()
@@ -34,6 +34,8 @@ async def run_test_tasks(finite_tasks, infinite_tasks):
     exs = [task.exception() for task in finite]
 
     [task.cancel() for task in infinite]
+    if sleep:
+        await asyncio.sleep(sleep)
     exs += await asyncio.gather(*infinite, return_exceptions=True)
     for ex in exs:
         if ex and not isinstance(ex, asyncio.exceptions.CancelledError):
@@ -41,7 +43,19 @@ async def run_test_tasks(finite_tasks, infinite_tasks):
     loop.stop()
 
 
-def run_test_threads(finite_tasks, infinite_tasks):
+class ExcThread(Thread):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.exc = None
+
+    def run(self):
+        try:
+            super().run()
+        except Exception as ex:
+            self.exc = ex
+
+
+def run_test_threads(finite_tasks, infinite_tasks, timeout=20):
 
     infinite = set()
     for task in infinite_tasks:
@@ -49,11 +63,14 @@ def run_test_threads(finite_tasks, infinite_tasks):
 
     finite = set()
     for task in finite_tasks:
-        tt = Thread(target=task)
+        tt = ExcThread(target=task)
         tt.start()
         finite.add(tt)
 
-    [task.join(timeout=20) for task in finite]
+    for task in finite:
+        task.join(timeout=timeout)
+        if hasattr(task, 'exc') and task.exc:
+            raise task.exc
 
 
 def wrapp(fce):
@@ -74,7 +91,8 @@ def cleanup_threads(fce):
         try:
             fce(*args, **kwargs)
         finally:
-            [th.stop() for th in threading.enumerate() if th.isDaemon()]
+            [th.stop() for th in threading.enumerate() if th.isDaemon()
+             and hasattr(th, 'stop')]
             num_threads = threading.active_count()
             if num_threads != pre_num_threads:
                 names = [th for th in threading.enumerate()]
