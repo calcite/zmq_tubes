@@ -401,6 +401,14 @@ class TubeNode:
         self._stop_main_loop = False
         self.warning_not_mach_topic = warning_not_mach_topic
 
+    def __enter__(self):
+        self.connect()
+        self.start()
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.stop()
+        self.close()
+
     @property
     def tubes(self) -> [Tube]:
         """

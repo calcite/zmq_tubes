@@ -64,6 +64,7 @@ class Tube(AsyncTube):
                     return response
                 elif counter == 0:
                     self.logger.error("The request timout")
+                    break
                 counter -= 1
         finally:
             if not self.is_persistent:
@@ -86,6 +87,10 @@ class Tube(AsyncTube):
 class TubeNode(AsyncTubeNode):
     __TUBE_CLASS = Tube
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.__main_thread = None
+
     def request(self, topic: str, payload=None, timeout=30) \
             -> TubeMessage:
         tube = self.get_tube_by_topic(topic, [zmq.REQ])
@@ -94,6 +99,10 @@ class TubeNode(AsyncTubeNode):
                                          f'to any Tube for request.')
         res = tube.request(topic, payload, timeout)
         return res
+
+    def stop(self):
+        if self.__main_thread:
+            self.__main_thread.stop()
 
     def start(self):
         def _callback_wrapper(_callback, _request: TubeMessage):
@@ -181,6 +190,6 @@ class TubeNode(AsyncTubeNode):
                     ).start()
             self.logger.info("The main process was ended.")
 
-        main = DaemonThread(target=_main_loop, name='zmq/main')
-        main.start()
-        return main
+        self.__main_thread = DaemonThread(target=_main_loop, name='zmq/main')
+        self.__main_thread.start()
+        return self.__main_thread
