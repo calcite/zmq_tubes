@@ -7,6 +7,8 @@ from .manager import TubeMessage, Tube as AsyncTube, TubeNode as AsyncTubeNode,\
     TubeMethodNotSupported, TubeMessageError, TubeMessageTimeout, \
     TubeTopicNotConfigured
 
+class TubeThreadDeadLock(Exception): pass
+
 
 class DaemonThread(Thread):
     def __init__(self, *args, **kwargs):
@@ -27,6 +29,44 @@ class Tube(AsyncTube):
         super().__init__(**kwargs)
         self.lock = Lock()
         self.context = Context().instance()
+
+    @singledispatchmethod
+    def send(self, arg):
+        raise NotImplementedError("Unknown type of topic")
+
+    @send.register
+    def _(self, topic: str, payload=None, raw_socket=None):
+        """
+        Send payload to topic.
+        :param topic - topic
+        :param payload - payload
+        :param raw_socket - zmqSocket, it used for non permanent connection
+        """
+        message = TubeMessage(
+            self,
+            payload=payload,
+            topic=topic,
+            raw_socket=raw_socket if raw_socket else self.raw_socket
+        )
+        self.send(message)
+
+    @send.register
+    def _(self, message: TubeMessage):
+        """
+        Send message.
+        :param message - TubeMessage
+        """
+        raw_msg = message.format_message()
+        self.logger.debug("Send (tube: %s) to %s", self.name, raw_msg)
+        if not self.lock.acquire(timeout=10):
+            raise TubeThreadDeadLock()
+        try:
+            message.raw_socket.send_multipart(raw_msg)
+        except (TypeError, zmq.ZMQError) as ex:
+            raise TubeMessageError(
+                f"The message '{message}' does not be sent.") from ex
+        finally:
+            self.lock.release()
 
     @singledispatchmethod
     def request(self, arg) -> TubeMessage:
@@ -73,10 +113,15 @@ class Tube(AsyncTube):
         raise TubeMessageTimeout(
             f"No answer for the request in {timeout}s. Topic: {request.topic}")
 
-    def receive_data(self, raw_socket=None):
+    def receive_data(self, raw_socket=None, timeout=3):
         if not raw_socket:
             raw_socket = self.raw_socket
-        raw_data = raw_socket.recv_multipart()
+        if not self.lock.acquire(timeout=timeout):
+            raise TubeThreadDeadLock()
+        try:
+            raw_data = raw_socket.recv_multipart()
+        finally:
+            self.lock.release()
         self.logger.debug(
             f"Received (tube {self.name}): {raw_data}")
         message = TubeMessage(tube=self, raw_socket=raw_socket)
@@ -122,14 +167,12 @@ class TubeNode(AsyncTubeNode):
                     raise TubeMessageError(
                         "The TubeMessage response object doesn't be created "
                         "from request object.")
-            if not tube.lock.acquire(timeout=10):
-                self.logger.error(f"The tube '{tube.name}' waits more then "
-                                  f"10s for sending response.")
-            else:
-                try:
-                    tube.send(response)
-                finally:
-                    tube.lock.release()
+            try:
+                tube.send(response)
+            except TubeThreadDeadLock:
+                self.logger.error(
+                    f"The tube '{tube.name}' waits more then "
+                    f"10s for access to socket.")
 
         def _one_event(request):
             callbacks = self.get_callback_by_topic(request.topic, request.tube)
@@ -174,20 +217,19 @@ class TubeNode(AsyncTubeNode):
                     # self.logger.debug(f"New event {event}")
                     raw_socket = event[0]
                     tube: Tube = raw_socket.__dict__['tube']
-                    if not tube.lock.acquire(timeout=3):
-                        self.logger.warning(
-                            f"The tube '{tube.name}' waits more then "
-                            f"3s for reading request.")
-                        continue
                     try:
-                        request = tube.receive_data(raw_socket=raw_socket)
-                    finally:
-                        tube.lock.release()
-                    Thread(
-                        target=_one_event,
-                        args=(request, ),
-                        name=f"zmq/worker/{tube.name}"
-                    ).start()
+                        request = tube.receive_data(
+                            raw_socket=raw_socket
+                        )
+                        Thread(
+                            target=_one_event,
+                            args=(request, ),
+                            name=f"zmq/worker/{tube.name}"
+                        ).start()
+                    except TubeThreadDeadLock:
+                        self.logger.error(
+                            f"The tube '{tube.name}' waits more then "
+                            f"3s for access to socket.")
             self.logger.info("The main process was ended.")
 
         self.__main_thread = DaemonThread(target=_main_loop, name='zmq/main')
