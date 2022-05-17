@@ -7,6 +7,7 @@ from .manager import TubeMessage, Tube as AsyncTube, TubeNode as AsyncTubeNode,\
     TubeMethodNotSupported, TubeMessageError, TubeMessageTimeout, \
     TubeTopicNotConfigured
 
+
 class TubeThreadDeadLock(Exception): pass
 
 
@@ -94,7 +95,7 @@ class Tube(AsyncTube):
             # if request.raw_socket.poll(timeout * 1000) == zmq.POLLIN:
             counter = timeout
             while (res := request.raw_socket.poll(1000)) != 0 or \
-                         (counter != 0 and not self.is_closed):
+                    (counter != 0 and not self.is_closed):
                 if res != 0:
                     response = self.receive_data(raw_socket=request.raw_socket)
                     if response.topic != request.topic:
