@@ -91,8 +91,8 @@ def cleanup_threads(fce):
         try:
             fce(*args, **kwargs)
         finally:
-            [th.stop() for th in threading.enumerate() if th.isDaemon()
-             and hasattr(th, 'stop')]
+            [th.stop() for th in threading.enumerate()
+             if th.isDaemon() and hasattr(th, 'stop')]
             num_threads = threading.active_count()
             if num_threads != pre_num_threads:
                 names = [th for th in threading.enumerate()]

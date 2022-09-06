@@ -26,6 +26,33 @@ class TopicMatcher:
                 return set_default
         return node.content
 
+    def filter(self, filter_topic: str):
+        """
+        Return registered topics by filter_topic
+        :param filter_topic: str
+        :return: [str]
+        """
+        def __rec(lst, node, _all=False, tt=None):
+            if not lst and not node.children:
+                return [('/'.join(tt), node.content)] if node.content else []
+            part = None
+            if _all:
+                res = []
+                for k, ch in node.children.items():
+                    res += __rec([], ch, _all, tt + [k])
+                return res
+            elif lst and (part := lst[0]) in ['+', '#']:
+                lst = lst[1:]
+                res = []
+                for k, ch in node.children.items():
+                    res += __rec(lst, ch, _all or part == '#', tt + [k])
+                return res
+            elif part in node.children:
+                return __rec(lst[1:], node.children[part], _all, tt + [part])
+            return []
+        return __rec(filter_topic.removesuffix('/').split('/'),
+                     self._root, False, [])
+
     def matches(self, topic):
         lst = topic.removesuffix('/').split('/')
         lst_len = len(lst)

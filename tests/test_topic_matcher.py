@@ -35,3 +35,18 @@ class TestTopicMatcher:
         t = TopicMatcher()
         t.set_topic(sub, True)
         assert t.match(topic) is None
+
+    @pytest.mark.parametrize("filter,val", [
+        ('#', [('g/p/+/i', 'i'), ('g/p/+/o', 'o'), ('g/s', 's')]),
+        ('g/#', [('g/p/+/i', 'i'), ('g/p/+/o', 'o'), ('g/s', 's')]),
+        ('g/s', [('g/s', 's')]),
+        ('g/+/+/i', [('g/p/+/i', 'i')]),
+        ('g/+/+/+', [('g/p/+/i', 'i'), ('g/p/+/o', 'o')]),
+        ('g/+', [('g/s', 's')]),
+    ])
+    def test_filtering(self, filter, val):
+        t = TopicMatcher()
+        t.set_topic('g/p/+/i', 'i')
+        t.set_topic('g/p/+/o', 'o')
+        t.set_topic('g/s', 's')
+        assert set(t.filter(filter)) == set(val)

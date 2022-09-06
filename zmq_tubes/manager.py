@@ -453,6 +453,15 @@ class TubeNode:
             res = res.pop()
         return res
 
+    def filter_tube_by_topic(self, topic: str, types=None) -> [(str, Tube)]:
+        tubes = self._tubes.filter(topic)
+        res = {}
+        for top, tts in tubes:
+            for tt in tts:
+                if not types or tt.tube_type in types:
+                    res[top] = tt
+        return res
+
     def get_tube_by_name(self, name: str) -> Tube:
         """
         returns the Tube with the name
@@ -521,11 +530,12 @@ class TubeNode:
         self.send(topic, payload, tube)
 
     def subscribe(self, topic: str, fce: Callable):
-        tube = self.get_tube_by_topic(topic, [zmq.SUB])
-        if not tube:
+        topic_tubes = self.filter_tube_by_topic(topic, [zmq.SUB])
+        if not topic_tubes:
             raise TubeTopicNotConfigured(f'The topic "{topic}" is not assigned '
                                          f'to any Tube for subscribe.')
-        self.register_handler(topic, fce, tube=tube)
+        for tube_topic, tube in topic_tubes.items():
+            self.register_handler(tube_topic, fce, tube=tube)
 
     def register_handler(self, topic: str, fce: Callable, tube: Tube = None):
         """
