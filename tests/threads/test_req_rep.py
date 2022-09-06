@@ -108,7 +108,7 @@ def test_req_resp_timeout():
     @wrapp
     def request_task(node, topic):
         try:
-            node.request(topic, f"request", timeout=1)
+            node.request(topic, "request", timeout=1)
             assert False, "The TubeMessageTimeout exception was not fired."
         except TubeMessageTimeout:
             pass
@@ -117,7 +117,7 @@ def test_req_resp_timeout():
     def response_task(node, topic):
         def __process(message):
             time.sleep(3)
-            return f'response'
+            return 'response'
         node.register_handler(topic, __process)
         node.start()
 
@@ -142,4 +142,3 @@ def test_req_resp_timeout():
         [request_task(node_req1, f'{TOPIC}/aaa')],
         [response_task(node_resp, f'{TOPIC}/#')]
     )
-

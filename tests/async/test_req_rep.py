@@ -110,7 +110,7 @@ def test_req_resp_timeout():
     async def request_task(node, topic, name):
         asyncio.current_task().set_name(name)
         try:
-            await node.request(topic, f"request", timeout=1)
+            await node.request(topic, "request", timeout=1)
             assert False, "The TubeMessageTimeout exception was not fired."
         except TubeMessageTimeout:
             pass
@@ -118,7 +118,7 @@ def test_req_resp_timeout():
     async def response_task(node, topic):
         async def __process(message):
             await asyncio.sleep(5)
-            return f'response'
+            return 'response'
         asyncio.current_task().set_name('RESP')
         node.register_handler(topic, __process)
         await node.start()
