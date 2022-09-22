@@ -7,8 +7,8 @@ from zmq_tubes.manager import TubeMessageTimeout
 from ..helpers import run_test_tasks
 from zmq_tubes import Tube, TubeNode
 
-pytestmark = pytest.mark.skipif(sys.version_info < (3, 7),
-                                reason='requires python3.7')
+pytestmark = pytest.mark.skipif(sys.version_info < (3, 8),
+                                reason='requires python3.8')
 
 ADDR = 'ipc:///tmp/req_resp.pipe'
 TOPIC = 'req'
