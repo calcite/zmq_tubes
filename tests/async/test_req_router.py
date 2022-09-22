@@ -1,8 +1,13 @@
 import asyncio
 import zmq
+import sys
+import pytest
 
 from ..helpers import run_test_tasks
 from zmq_tubes import Tube, TubeNode, TubeMessage
+
+pytestmark = pytest.mark.skipif(sys.version_info < (3, 8),
+                                reason='requires python3.8')
 
 ADDR = 'ipc:///tmp/req_router.pipe'
 TOPIC = 'req'

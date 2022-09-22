@@ -1,4 +1,3 @@
-from functools import singledispatchmethod
 from threading import Thread, Lock, Event, current_thread
 import zmq
 from zmq import Poller, Context
@@ -31,28 +30,7 @@ class Tube(AsyncTube):
         self.lock = Lock()
         self.context = Context().instance()
 
-    @singledispatchmethod
-    def send(self, arg):
-        raise NotImplementedError("Unknown type of topic")
-
-    @send.register
-    def _(self, topic: str, payload=None, raw_socket=None):
-        """
-        Send payload to topic.
-        :param topic - topic
-        :param payload - payload
-        :param raw_socket - zmqSocket, it used for non permanent connection
-        """
-        message = TubeMessage(
-            self,
-            payload=payload,
-            topic=topic,
-            raw_socket=raw_socket if raw_socket else self.raw_socket
-        )
-        self.send(message)
-
-    @send.register
-    def _(self, message: TubeMessage):
+    def __send_message(self, message: TubeMessage):
         """
         Send message.
         :param message - TubeMessage
@@ -69,12 +47,28 @@ class Tube(AsyncTube):
         finally:
             self.lock.release()
 
-    @singledispatchmethod
-    def request(self, arg) -> TubeMessage:
+    def request(self, *args, **kwargs) -> TubeMessage:
+        """
+                Send request
+                :param request: Optional[TubeMessage]
+                :param topic: Optional[str]
+                :param payload: Optional[dict]
+                :param timeout: int
+                :return: TubeMessage
+                """
+        if args:
+            if isinstance(args[0], TubeMessage):
+                return self.__request_message(*args, **kwargs)
+            elif isinstance(args[0], str):
+                return self.__request_payload(*args, **kwargs)
+        elif kwargs:
+            if 'message' in kwargs:
+                return self.__request_message(**kwargs)
+            elif 'topic' in kwargs:
+                return self.__request_payload(**kwargs)
         raise NotImplementedError("Unknown type of topic")
 
-    @request.register
-    def _(self, topic: str, payload=None, timeout=None):
+    def __request_payload(self, topic: str, payload=None, timeout=None):
         request = TubeMessage(
             self,
             payload=payload,
@@ -83,8 +77,7 @@ class Tube(AsyncTube):
         )
         return self.request(request, timeout)
 
-    @request.register
-    def _(self, request: TubeMessage, timeout: int = 30):
+    def __request_message(self, request: TubeMessage, timeout: int = 30):
         if self.tube_type != zmq.REQ:
             raise TubeMethodNotSupported(
                 f"The tube '{self.name}' (type: '{self.tube_type_name}') "
@@ -94,8 +87,8 @@ class Tube(AsyncTube):
             self.send(request)
             # if request.raw_socket.poll(timeout * 1000) == zmq.POLLIN:
             counter = timeout
-            while (res := request.raw_socket.poll(1000)) != 0 or \
-                    (counter != 0 and not self.is_closed):
+            res = request.raw_socket.poll(1000)
+            while res != 0 or (counter != 0 and not self.is_closed):
                 if res != 0:
                     response = self.receive_data(raw_socket=request.raw_socket)
                     if response.topic != request.topic:
@@ -107,6 +100,7 @@ class Tube(AsyncTube):
                     self.logger.error("The request timout")
                     break
                 counter -= 1
+                res = request.raw_socket.poll(1000)
         finally:
             if not self.is_persistent:
                 self.logger.debug(f"Close tube {self.name}")

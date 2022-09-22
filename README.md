@@ -1,4 +1,6 @@
-[![PyPI version](https://badge.fury.io/py/zmq-tubes.svg)](https://badge.fury.io/py/zmq-tubes)
+[![PyPI](https://img.shields.io/pypi/v/zmq_tubes?color=green&style=plastic)](https://pypi.org/project/zmq-tubes/)
+![PyPI - Python Version](https://img.shields.io/pypi/pyversions/zmq_tubes?style=plastic)
+![License](https://img.shields.io/github/license/calcite/zmq_tubes?style=plastic)
 # ZMQ Tubes
 
 ZMQ Tubes is a managing system for ZMQ communication. 

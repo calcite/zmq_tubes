@@ -12,13 +12,17 @@ class TopicMatcher:
 
     def set_topic(self, key, value):
         node = self._root
-        for sym in key.removesuffix('/').split('/'):
+        if key and key[-1] == '/':
+            key = key[:-1]
+        for sym in key.split('/'):
             node = node.children.setdefault(sym, self.TopicNode())
         node.content = value
 
     def get_topic(self, key, set_default=None):
         node = self._root
-        for sym in key.removesuffix('/').split('/'):
+        if key and key[-1] == '/':
+            key = key[:-1]
+        for sym in key.split('/'):
             node = node.children.get(sym)
             if node is None:
                 if set_default is not None:
@@ -41,20 +45,26 @@ class TopicMatcher:
                 for k, ch in node.children.items():
                     res += __rec([], ch, _all, tt + [k])
                 return res
-            elif lst and (part := lst[0]) in ['+', '#']:
+            elif lst and lst[0] in ['+', '#']:
+                part = lst[0]
                 lst = lst[1:]
                 res = []
                 for k, ch in node.children.items():
                     res += __rec(lst, ch, _all or part == '#', tt + [k])
                 return res
-            elif part in node.children:
-                return __rec(lst[1:], node.children[part], _all, tt + [part])
+            elif lst and lst[0] in node.children:
+                return __rec(lst[1:], node.children[lst[0]], _all,
+                             tt + [lst[0]])
             return []
-        return __rec(filter_topic.removesuffix('/').split('/'),
-                     self._root, False, [])
+
+        if filter_topic and filter_topic[-1] == '/':
+            filter_topic = filter_topic[:-1]
+        return __rec(filter_topic.split('/'), self._root, False, [])
 
     def matches(self, topic):
-        lst = topic.removesuffix('/').split('/')
+        if topic and topic[-1] == '/':
+            topic = topic[:-1]
+        lst = topic.split('/')
         lst_len = len(lst)
         normal = not topic.startswith('$')
         res = []

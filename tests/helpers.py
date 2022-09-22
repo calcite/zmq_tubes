@@ -14,7 +14,7 @@ def _handle_task_result(task: asyncio.Task) -> None:
 
 
 async def run_test_tasks(finite_tasks, infinite_tasks, sleep=None):
-    loop = asyncio.get_running_loop()
+    loop = asyncio.get_event_loop()
 
     infinite = set()
     for task in infinite_tasks:
