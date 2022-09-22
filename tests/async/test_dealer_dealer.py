@@ -1,8 +1,14 @@
 import asyncio
+import sys
+
 import zmq
+import pytest
 
 from ..helpers import run_test_tasks
 from zmq_tubes import Tube, TubeNode, TubeMessage
+
+pytestmark = pytest.mark.skipif(sys.version_info < (3, 7),
+                                reason='requires python3.7')
 
 ADDR = 'ipc:///tmp/dealer_dealer.pipe'
 TOPIC = 'req'
