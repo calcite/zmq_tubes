@@ -55,12 +55,13 @@ def test_req_route():
     node_router = TubeNode()
     node_router.register_tube(tube_router, f"{TOPIC}/#")
 
-    run_test_threads(
-        [request_task(node_req1, TOPIC, 'REQ1', timeout=5),
-         request_task(node_req2, TOPIC, 'REQ2', number=1)
-         ],
-        [response_task(node_router, f'{TOPIC}/#', 'ROUTER')]
-    )
+    with node_req1, node_req2:
+        run_test_threads(
+            [request_task(node_req1, TOPIC, 'REQ1', timeout=5),
+             request_task(node_req2, TOPIC, 'REQ2', number=1)
+             ],
+            [response_task(node_router, f'{TOPIC}/#', 'ROUTER')]
+        )
 
 
 @cleanup_threads

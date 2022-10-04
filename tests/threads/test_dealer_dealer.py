@@ -44,18 +44,17 @@ def test_dealer_dealer():
 
     node_dealer1 = TubeNode()
     node_dealer1.register_tube(tube_dealer1, f"{TOPIC}/#")
-    node_dealer1.connect()
 
     node_dealer2 = TubeNode()
     node_dealer2.register_tube(tube_dealer2, f"{TOPIC}/#")
-    node_dealer2.connect()
 
-    run_test_threads(
-        [request_task(node_dealer1, TOPIC, 'DEALER1_REQ'),
-         request_task(node_dealer2, TOPIC, 'DEALER2_REQ')],
-        [response_dealer_task(node_dealer1, f'{TOPIC}/#', 'DEALER1_RESP'),
-         response_dealer_task(node_dealer2, f'{TOPIC}/#', 'DEALER2_RESP')]
-    )
+    with node_dealer1, node_dealer2:
+        run_test_threads(
+            [request_task(node_dealer1, TOPIC, 'DEALER1_REQ'),
+             request_task(node_dealer2, TOPIC, 'DEALER2_REQ')],
+            [response_dealer_task(node_dealer1, f'{TOPIC}/#', 'DEALER1_RESP'),
+             response_dealer_task(node_dealer2, f'{TOPIC}/#', 'DEALER2_RESP')]
+        )
 
     assert len(data) == 0
 
@@ -96,15 +95,15 @@ def test_dealer_dealer_on_same_node():
     node_dealer1 = TubeNode()
     node_dealer1.register_tube(tube_dealer1, f"{TOPIC}/#")
     node_dealer1.register_tube(tube_dealer2, f"{TOPIC}/#")
-    node_dealer1.connect()
 
-    run_test_threads(
-        [request_task(node_dealer1, TOPIC, 'DEALER1_REQ', tube_dealer1),
-         request_task(node_dealer1, TOPIC, 'DEALER2_REQ', tube_dealer2)],
-        [response_dealer_task(node_dealer1, f'{TOPIC}/#',
-                              'DEALER1_RESP', tube_dealer1),
-         response_dealer_task(node_dealer1, f'{TOPIC}/#',
-                              'DEALER2_RESP', tube_dealer2)]
-    )
+    with node_dealer1:
+        run_test_threads(
+            [request_task(node_dealer1, TOPIC, 'DEALER1_REQ', tube_dealer1),
+             request_task(node_dealer1, TOPIC, 'DEALER2_REQ', tube_dealer2)],
+            [response_dealer_task(node_dealer1, f'{TOPIC}/#',
+                                  'DEALER1_RESP', tube_dealer1),
+             response_dealer_task(node_dealer1, f'{TOPIC}/#',
+                                  'DEALER2_RESP', tube_dealer2)]
+        )
 
     assert len(data) == 0

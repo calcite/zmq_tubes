@@ -56,11 +56,12 @@ def test_dealer_router():
     node_dealer = TubeNode()
     node_dealer.register_tube(tube_dealer, f"{TOPIC}/#")
 
-    run_test_threads(
-        [request_task(node_dealer, TOPIC, 'DEALER_REQ')],
-        [response_dealer_task(node_dealer, f'{TOPIC}/#', 'DEALER_RESP'),
-         response_task(node_router, f'{TOPIC}/#', 'ROUTER')]
-    )
+    with node_dealer:
+        run_test_threads(
+            [request_task(node_dealer, TOPIC, 'DEALER_REQ')],
+            [response_dealer_task(node_dealer, f'{TOPIC}/#', 'DEALER_RESP'),
+             response_task(node_router, f'{TOPIC}/#', 'ROUTER')]
+        )
 
     assert len(data) == 0
 
@@ -108,12 +109,13 @@ def test_dealer_router_on_same_node():
     node = TubeNode()
     node.register_tube(tube_router, f"{TOPIC}/#")
     node.register_tube(tube_dealer, f"{TOPIC}/#")
-    node.connect()
 
-    run_test_threads(
-        [request_task(node, TOPIC, 'DEALER_REQ', tube_dealer)],
-        [response_dealer_task(node, f'{TOPIC}/#', 'DEALER_RESP', tube_dealer),
-         response_task(node, f'{TOPIC}/#', 'ROUTER', tube_router)]
-    )
+    with node:
+        run_test_threads(
+            [request_task(node, TOPIC, 'DEALER_REQ', tube_dealer)],
+            [response_dealer_task(node, f'{TOPIC}/#', 'DEALER_RESP',
+                                  tube_dealer),
+             response_task(node, f'{TOPIC}/#', 'ROUTER', tube_router)]
+        )
 
     assert len(data) == 0

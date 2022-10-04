@@ -52,11 +52,12 @@ def test_req_resp():
     node_resp = TubeNode()
     node_resp.register_tube(tube_resp, f"{TOPIC}/#")
 
-    run_test_threads(
-        [request_task(node_req1, f'{TOPIC}/aaa', 'REQ1'),
-         request_task(node_req2, f'{TOPIC}', 'REQ2')],
-        [response_task(node_resp, f'{TOPIC}/#')]
-    )
+    with node_req1, node_req2:
+        run_test_threads(
+            [request_task(node_req1, f'{TOPIC}/aaa', 'REQ1'),
+             request_task(node_req2, f'{TOPIC}', 'REQ2')],
+            [response_task(node_resp, f'{TOPIC}/#')]
+        )
 
 
 @cleanup_threads
@@ -138,7 +139,8 @@ def test_req_resp_timeout():
     node_resp = TubeNode()
     node_resp.register_tube(tube_resp, f"{TOPIC}/#")
 
-    run_test_threads(
-        [request_task(node_req1, f'{TOPIC}/aaa')],
-        [response_task(node_resp, f'{TOPIC}/#')]
-    )
+    with node_req1:
+        run_test_threads(
+            [request_task(node_req1, f'{TOPIC}/aaa')],
+            [response_task(node_resp, f'{TOPIC}/#')]
+        )

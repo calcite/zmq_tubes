@@ -10,10 +10,11 @@ from zmq_tubes.matcher import TopicMatcher
 
 
 class TubeException(Exception): pass            # flake8: E701
-class TubeTopicNotConfigured(Exception): pass   # flake8: E701
-class TubeMessageError(Exception): pass         # flake8: E701
-class TubeMessageTimeout(Exception): pass       # flake8: E701
-class TubeMethodNotSupported(Exception): pass         # flake8: E701
+class TubeTopicNotConfigured(TubeException): pass   # flake8: E701
+class TubeMessageError(TubeException): pass         # flake8: E701
+class TubeMessageTimeout(TubeException): pass       # flake8: E701
+class TubeMethodNotSupported(TubeException): pass   # flake8: E701
+class TubeConnectionError(TubeException): pass   # flake8: E701
 
 
 TUBE_TYPE_MAPPING = {
@@ -339,6 +340,9 @@ class Tube:
         """
         raw_msg = message.format_message()
         self.logger.debug("Send (tube: %s) to %s", self.name, raw_msg)
+        if not message.raw_socket or message.raw_socket.closed:
+            raise TubeConnectionError(
+                f'The tube {message.tube.name} is already closed.')
         try:
             message.raw_socket.send_multipart(raw_msg)
         except (TypeError, zmq.ZMQError) as ex:
@@ -394,7 +398,10 @@ class Tube:
         finally:
             if not self.is_persistent:
                 self.logger.debug(f"Close tube {self.name}")
-                request.raw_socket.close()
+                if request.raw_socket and not request.raw_socket.closed:
+                    request.raw_socket.close()
+        if self.is_closed:
+            raise TubeConnectionError(f'The tube {self.name} was closed.')
         raise TubeMessageTimeout(
             f"No answer for the request in {timeout}s. Topic: {request.topic}")
 

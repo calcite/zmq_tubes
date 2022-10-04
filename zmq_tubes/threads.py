@@ -4,16 +4,16 @@ from zmq import Poller, Context
 
 from .manager import TubeMessage, Tube as AsyncTube, TubeNode as AsyncTubeNode,\
     TubeMethodNotSupported, TubeMessageError, TubeMessageTimeout, \
-    TubeTopicNotConfigured
+    TubeTopicNotConfigured, TubeConnectionError
 
 
 class TubeThreadDeadLock(Exception): pass
 
 
-class DaemonThread(Thread):
+class StoppableThread(Thread):
     def __init__(self, *args, **kwargs):
         self.stop_event = Event()
-        kwargs['daemon'] = True
+        # kwargs['daemon'] = True
         super().__init__(*args, **kwargs)
 
     def is_stopped(self):
@@ -37,6 +37,9 @@ class Tube(AsyncTube):
         """
         raw_msg = message.format_message()
         self.logger.debug("Send (tube: %s) to %s", self.name, raw_msg)
+        if not message.raw_socket or message.raw_socket.closed:
+            raise TubeConnectionError(
+                f'The tube {message.tube.name} is already closed.')
         if not self.lock.acquire(timeout=10):
             raise TubeThreadDeadLock()
         try:
@@ -104,7 +107,10 @@ class Tube(AsyncTube):
         finally:
             if not self.is_persistent:
                 self.logger.debug(f"Close tube {self.name}")
-                request.raw_socket.close(3000)
+                if request.raw_socket and not request.raw_socket.closed:
+                    request.raw_socket.close(3000)
+        if self.is_closed:
+            raise TubeConnectionError(f'The tube {self.name} was closed.')
         raise TubeMessageTimeout(
             f"No answer for the request in {timeout}s. Topic: {request.topic}")
 
@@ -227,6 +233,6 @@ class TubeNode(AsyncTubeNode):
                             f"3s for access to socket.")
             self.logger.info("The main process was ended.")
 
-        self.__main_thread = DaemonThread(target=_main_loop, name='zmq/main')
+        self.__main_thread = StoppableThread(target=_main_loop, name='zmq/main')
         self.__main_thread.start()
         return self.__main_thread

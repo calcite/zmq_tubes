@@ -70,12 +70,13 @@ def test_dealer_reps():
     node_dealer.register_tube(tube_dealer, f"{TOPIC}/#")
     # node_dealer.connect()
 
-    run_test_threads(
-        [request_task(node_dealer, TOPIC, 'DEALER_REQ')],
-        [response_dealer_task(node_dealer, f'{TOPIC}/#', 'DEALER_RESP'),
-         response_task(node_rep1, f'{TOPIC}/#', 'REP1'),
-         response_task(node_rep2, f'{TOPIC}/#', 'REP2')]
-    )
+    with node_dealer:
+        run_test_threads(
+            [request_task(node_dealer, TOPIC, 'DEALER_REQ')],
+            [response_dealer_task(node_dealer, f'{TOPIC}/#', 'DEALER_RESP'),
+             response_task(node_rep1, f'{TOPIC}/#', 'REP1'),
+             response_task(node_rep2, f'{TOPIC}/#', 'REP2')]
+        )
 
     assert len(data) == 0
 
@@ -125,7 +126,6 @@ def test_dealer_reps_on_same_node():
     node = TubeNode()
     node.register_tube(tube_dealer, f"{TOPIC}/#")
     node.register_tube(tube_rep, f"{TOPIC}/#")
-    # node.connect()
 
     run_test_threads(
         [request_task(node, TOPIC, 'DEALER_REQ', tube_dealer)],
