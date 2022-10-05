@@ -1,113 +1,116 @@
 import asyncio
 import zmq
-import sys
+# import sys
 import pytest
 
-from ..helpers import run_test_tasks
-from zmq_tubes import Tube, TubeNode, TubeMessage
+from zmq_tubes import Tube, TubeNode
 
-pytestmark = pytest.mark.skipif(sys.version_info < (3, 8),
-                                reason='requires python3.8')
+# pytestmark = pytest.mark.skipif(sys.version_info < (3, 8),
+#                                 reason='requires python3.8')
 
 ADDR = 'ipc:///tmp/req_router.pipe'
 TOPIC = 'req'
 
 
-def test_req():
+@pytest.fixture
+def data():
+    return ['REQ10', 'REQ11', 'REQ20', 'REQ21']
 
-    async def request_task(node, topic, name, number=4, timeout=30):
-        asyncio.current_task().set_name(name)
-        for it in range(0, number):
-            response = await node.request(topic, f"request-{name}-{it}",
-                                          timeout=timeout)
-            assert response.payload == f"response-{name}-{it}"
 
-    async def response_task(node, topic, name):
-        async def __process(request: TubeMessage):
-            assert request.payload[0:8] == 'request-'
-            if 'REQ2' in request.payload:
-                await asyncio.sleep(2)
-            return request.create_response(f'response-{request.payload[8:]}')
+@pytest.fixture(params=[{'server': True}])
+def router_node(data, request):
+    async def __process(req):
+        data.remove(req.payload)
+        if 'REQ10' in req.payload:
+            await asyncio.sleep(.3)
+        return req.create_response(f'RESP{req.payload[-2:]}')
 
-        asyncio.current_task().set_name(name)
-        node.register_handler(topic, __process)
-        await node.start()
-
-    tube_req1 = Tube(
-        name='REQ1',
-        addr=ADDR,
-        tube_type=zmq.REQ
-    )
-    tube_req2 = Tube(
-        name='REQ2',
-        addr=ADDR,
-        tube_type=zmq.REQ
-    )
-    tube_router = Tube(
+    tube = Tube(
         name='ROUTER',
         addr=ADDR,
-        server=True,
-        tube_type=zmq.ROUTER
-    )
-    node_req1 = TubeNode()
-    node_req1.register_tube(tube_req1, f"{TOPIC}/#")
-
-    node_req2 = TubeNode()
-    node_req2.register_tube(tube_req2, f"{TOPIC}/#")
-
-    node_router = TubeNode()
-    node_router.register_tube(tube_router, f"{TOPIC}/#")
-
-    asyncio.run(
-        run_test_tasks(
-            [request_task(node_req1, TOPIC, 'REQ1', timeout=3),
-             request_task(node_req2, TOPIC, 'REQ2', number=1)],
-            [response_task(node_router, f'{TOPIC}/#', 'ROUTER')]
-        )
-    )
-
-
-def test_req_router_on_same_node():
-    """
-        The REQ/ROUTER and client on the same node.
-    """
-
-    async def request_task(node, topic, name, number=4, timeout=30):
-        asyncio.current_task().set_name(name)
-        for it in range(0, number):
-            response = await node.request(topic, f"request-{name}-{it}",
-                                          timeout=timeout)
-            assert response.payload == f"response-{name}-{it}"
-
-    async def response_task(node, topic, name):
-        async def __process(request: TubeMessage):
-            assert request.payload[0:8] == 'request-'
-            return request.create_response(f'response-{request.payload[8:]}')
-
-        asyncio.current_task().set_name(name)
-        node.register_handler(topic, __process)
-        await node.start()
-
-    tube1 = Tube(
-        name='REQ',
-        addr=ADDR,
-        tube_type=zmq.REQ
-    )
-
-    tube2 = Tube(
-        name='ROUTER',
-        addr=ADDR,
-        server=True,
+        server=request.param['server'],
         tube_type=zmq.ROUTER
     )
 
     node = TubeNode()
-    node.register_tube(tube1, f"{TOPIC}/#")
-    node.register_tube(tube2, f"{TOPIC}/#")
+    node.register_tube(tube, f"{TOPIC}/#")
+    node.register_handler(f"{TOPIC}/#", __process)
+    return node
 
-    asyncio.run(
-        run_test_tasks(
-            [request_task(node, TOPIC, 'REQ1', timeout=3)],
-            [response_task(node, f'{TOPIC}/#', 'ROUTER')]
-        )
+
+@pytest.fixture(params=[{'server': False}])
+def req_node1(request):
+    tube = Tube(
+        name='REQ1',
+        addr=ADDR,
+        server=request.param['server'],
+        tube_type=zmq.REQ
     )
+
+    node = TubeNode()
+    node.register_tube(tube, f"{TOPIC}/#")
+    return node
+
+
+@pytest.fixture(params=[{'server': False}])
+def req_node2(request):
+    tube = Tube(
+        name='REQ2',
+        addr=ADDR,
+        server=request.param['server'],
+        tube_type=zmq.REQ
+    )
+
+    node = TubeNode()
+    node.register_tube(tube, f"{TOPIC}/#")
+    return node
+
+
+@pytest.mark.asyncio
+async def test_router_reqs(router_node, req_node1, req_node2, data):
+
+    res = []
+
+    async def step(node, p, delay=None):
+        if delay:
+            await asyncio.sleep(delay)  # distance between tasks
+        while data:
+            resp = await node.request(f"{TOPIC}/{p}", data[0], timeout=1)
+            res.append('RESP' in resp.payload)
+
+    with router_node:
+        await asyncio.gather(
+            asyncio.create_task(step(req_node1, 'A')),
+            asyncio.create_task(step(req_node2, 'B', delay=.1))
+        )
+    assert all(res)
+    assert len(data) == 0
+
+
+@pytest.mark.asyncio
+async def test_req_router_on_same_node(router_node, data):
+    """
+        The REQ/ROUTER and client on the same node.
+    """
+
+    res = []
+
+    async def step(node, p):
+        for _ in range(len(data)):
+            resp = await node.request(f"{TOPIC}/{p}", data[0], timeout=1)
+            res.append('RESP' in resp.payload)
+
+    tube = Tube(
+        name='REQ',
+        addr=ADDR,
+        server=False,
+        tube_type=zmq.REQ
+    )
+    router_node.register_tube(tube, f"{TOPIC}/#")
+
+    with router_node:
+        await asyncio.gather(
+            asyncio.create_task(step(router_node, 'A')),
+        )
+    assert all(res)
+    assert len(data) == 0

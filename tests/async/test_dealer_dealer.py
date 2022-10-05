@@ -1,115 +1,96 @@
 import asyncio
-import sys
 
 import zmq
 import pytest
 
-from ..helpers import run_test_tasks
-from zmq_tubes import Tube, TubeNode, TubeMessage
+from zmq_tubes import Tube, TubeNode
 
-pytestmark = pytest.mark.skipif(sys.version_info < (3, 8),
-                                reason='requires python3.8')
+# pytestmark = pytest.mark.skipif(sys.version_info < (3, 8),
+#                                 reason='requires python3.8')
 
 ADDR = 'ipc:///tmp/dealer_dealer.pipe'
 TOPIC = 'req'
 
 
-def test_dealer_dealer():
-    data = ['request-DEALER1_REQ-0', 'request-DEALER1_REQ-1',
-            'request-DEALER2_REQ-0', 'request-DEALER2_REQ-1']
+@pytest.fixture
+def data():
+    return ['REQ10', 'REQ11', 'REQ20', 'REQ21']
 
-    async def request_task(node, topic, name):
-        asyncio.current_task().set_name(name)
-        for it in range(0, 2):
-            node.send(topic, f"request-{name}-{it}")
-        await asyncio.sleep(3)
 
-    async def response_dealer_task(node, topic, name):
-        async def __process(response: TubeMessage):
-            assert response.payload in data
-            data.remove(response.payload)
-        asyncio.current_task().set_name(name)
-        node.register_handler(topic, __process)
-        await node.start()
+@pytest.fixture(params=[{'server': True}])
+def dealer_node1(request, data):
+    async def __process(req):
+        data.remove(req.payload)
+        req.tube.send(req.create_response(f'DEALER1-{req.payload[-2:]}'))
 
-    tube_dealer1 = Tube(
+    tube = Tube(
         name='DEALER1',
         addr=ADDR,
-        server=True,
+        server=request.param['server'],
         tube_type=zmq.DEALER
     )
 
-    tube_dealer2 = Tube(
+    node = TubeNode()
+    node.register_tube(tube, f"{TOPIC}/#")
+    node.register_handler(f"{TOPIC}/#", __process, tube)
+    return node
+
+
+@pytest.fixture(params=[{'server': False}])
+def dealer_node2(request):
+    tube = Tube(
         name='DEALER2',
         addr=ADDR,
+        server=request.param['server'],
         tube_type=zmq.DEALER
     )
 
-    node_dealer1 = TubeNode()
-    node_dealer1.register_tube(tube_dealer1, f"{TOPIC}/#")
-    node_dealer1.connect()
+    node = TubeNode()
+    node.register_tube(tube, f"{TOPIC}/#")
+    return node
 
-    node_dealer2 = TubeNode()
-    node_dealer2.register_tube(tube_dealer2, f"{TOPIC}/#")
-    node_dealer2.connect()
 
-    asyncio.run(
-        run_test_tasks(
-            [request_task(node_dealer1, TOPIC, 'DEALER1_REQ'),
-             request_task(node_dealer2, TOPIC, 'DEALER2_REQ')],
-            [response_dealer_task(node_dealer1, f'{TOPIC}/#', 'DEALER1_RESP'),
-             response_dealer_task(node_dealer2, f'{TOPIC}/#', 'DEALER2_RESP')]
-        )
-    )
+@pytest.mark.asyncio
+async def test_dealer_dealer(dealer_node1, dealer_node2, data):
+    res = []
 
+    async def __process(req):
+        res.append(req.payload)
+
+    dealer_node2.register_handler(f"{TOPIC}/#", __process)
+
+    with dealer_node1, dealer_node2:
+        for _ in range(len(data)):
+            dealer_node2.send(f"{TOPIC}/A", data[0])
+            await asyncio.sleep(.2)
+        await asyncio.sleep(1)
+
+    assert len(res) == 4
     assert len(data) == 0
 
 
-def test_dealer_dealer_on_same_node():
-    data = ['request-DEALER1_REQ-0', 'request-DEALER1_REQ-1',
-            'request-DEALER2_REQ-0', 'request-DEALER2_REQ-1']
+@pytest.mark.asyncio
+async def test_dealer_dealer_on_same_node(dealer_node1, data):
+    res = []
 
-    async def request_task(node, topic, name):
-        asyncio.current_task().set_name(name)
-        for it in range(0, 2):
-            node.send(topic, f"request-{name}-{it}")
-        await asyncio.sleep(3)
+    async def __process(req):
+        res.append(req.payload)
 
-    async def response_dealer_task(node, topic, name, tube):
-        async def __process(response: TubeMessage):
-            assert response.payload in data
-            data.remove(response.payload)
-        asyncio.current_task().set_name(name)
-        node.register_handler(topic, __process, tube)
-        await node.start()
-
-    tube_dealer1 = Tube(
+    tube = Tube(
         name='DEALER1',
         addr=ADDR,
-        server=True,
+        server=False,
         tube_type=zmq.DEALER
     )
 
-    tube_dealer2 = Tube(
-        name='DEALER2',
-        addr=ADDR,
-        tube_type=zmq.DEALER
-    )
+    dealer_node1.register_tube(tube, f"{TOPIC}/#")
+    dealer_node1.register_handler(f"{TOPIC}/#", __process, tube)
 
-    node_dealer1 = TubeNode()
-    node_dealer1.register_tube(tube_dealer1, f"{TOPIC}/#")
-    node_dealer1.register_tube(tube_dealer2, f"{TOPIC}/#")
-    node_dealer1.connect()
+    with dealer_node1:
+        for _ in range(len(data)):
+            dealer_node1.send(f"{TOPIC}/A", data[0])
+            await asyncio.sleep(.2)
+        await asyncio.sleep(1)
 
-    asyncio.run(
-        run_test_tasks(
-            [request_task(node_dealer1, TOPIC, 'DEALER1_REQ'),
-             request_task(node_dealer1, TOPIC, 'DEALER2_REQ')],
-            [response_dealer_task(node_dealer1, f'{TOPIC}/#',
-                                  'DEALER1_RESP', tube_dealer1),
-             response_dealer_task(node_dealer1, f'{TOPIC}/#',
-                                  'DEALER2_RESP', tube_dealer2)]
-        )
-    )
-
+    assert len(res) == 4
     assert len(data) == 0

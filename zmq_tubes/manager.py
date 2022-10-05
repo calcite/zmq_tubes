@@ -431,7 +431,8 @@ class TubeNode:
 
     def __enter__(self):
         self.connect()
-        self.start()
+        asyncio.create_task(self.start(), name='zmq/main')
+        return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.stop()
@@ -616,6 +617,7 @@ class TubeNode:
         self.logger.info("The main loop was started.")
         while not self._stop_main_loop:
             events = await poller.poll(timeout=100)
+            # print(events)
             for event in events:
                 raw_socket = event[0]
                 tube: Tube = raw_socket.__dict__['tube']

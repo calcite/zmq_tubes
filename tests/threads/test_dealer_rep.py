@@ -1,136 +1,123 @@
-import logging
-import sys
+import pytest
 import time
-
 import zmq
 
-from ..helpers import run_test_threads, cleanup_threads, wrapp
-from zmq_tubes.threads import Tube, TubeNode, TubeMessage
+from zmq_tubes.threads import Tube, TubeNode
 
 ADDR = 'ipc:///tmp/dealer_rep.pipe'
 TOPIC = 'req'
 
-logging.basicConfig(level=logging.DEBUG, stream=sys.stdout)
+
+@pytest.fixture
+def data():
+    return ['REQ10', 'REQ11']
 
 
-@cleanup_threads
-def test_dealer_reps():
-    data = ['response-DEALER_REQ-0', 'response-DEALER_REQ-1']
+@pytest.fixture
+def data2():
+    return ['REQ20', 'REQ21']
 
-    @wrapp
-    def request_task(node, topic, name):
-        time.sleep(2)
-        for it in range(0, 2):
-            node.send(topic, f"request-{name}-{it}")
-        time.sleep(3)
 
-    @wrapp
-    def response_dealer_task(node, topic, name):
-        def __process(response: TubeMessage):
-            assert response.payload in data
-            data.remove(response.payload)
-        node.register_handler(topic, __process)
-        node.start()
-
-    @wrapp
-    def response_task(node, topic, name):
-        def __process(request: TubeMessage):
-            assert request.payload[0:8] == 'request-'
-            if 'REQ-0' in request.payload:
-                time.sleep(1)
-            return request.create_response(f'response-{request.payload[8:]}')
-        node.register_handler(topic, __process)
-        node.start()
-
-    tube_dealer = Tube(
+@pytest.fixture(params=[{'server': True}])
+def dealer_node(request):
+    tube = Tube(
         name='DEALER',
         addr=ADDR,
-        server=True,
+        server=request.param['server'],
         tube_type=zmq.DEALER
     )
 
-    tube_rep1 = Tube(
+    node = TubeNode()
+    node.register_tube(tube, f"{TOPIC}/#")
+    return node
+
+
+@pytest.fixture(params=[{'server': False}])
+def resp_node1(data, request):
+    def __process(req):
+        if req.payload in data:
+            data.remove(req.payload)
+            return req.create_response(f'RESP{req.payload[-2:]}')
+
+    tube = Tube(
         name='REP1',
         addr=ADDR,
-        tube_type=zmq.REP
-    )
-
-    tube_rep2 = Tube(
-        name='REP2',
-        addr=ADDR,
-        tube_type=zmq.REP
-    )
-    node_rep1 = TubeNode()
-    node_rep1.register_tube(tube_rep1, f"{TOPIC}/#")
-
-    node_rep2 = TubeNode()
-    node_rep2.register_tube(tube_rep2, f"{TOPIC}/#")
-
-    node_dealer = TubeNode()
-    node_dealer.register_tube(tube_dealer, f"{TOPIC}/#")
-    # node_dealer.connect()
-
-    with node_dealer:
-        run_test_threads(
-            [request_task(node_dealer, TOPIC, 'DEALER_REQ')],
-            [response_dealer_task(node_dealer, f'{TOPIC}/#', 'DEALER_RESP'),
-             response_task(node_rep1, f'{TOPIC}/#', 'REP1'),
-             response_task(node_rep2, f'{TOPIC}/#', 'REP2')]
-        )
-
-    assert len(data) == 0
-
-
-@cleanup_threads
-def test_dealer_reps_on_same_node():
-    data = ['response-DEALER_REQ-0', 'response-DEALER_REQ-1']
-
-    @wrapp
-    def request_task(node, topic, name, tube):
-        time.sleep(2)
-        for it in range(0, 2):
-            node.send(topic, f"request-{name}-{it}", tube)
-        time.sleep(3)
-
-    @wrapp
-    def response_dealer_task(node, topic, name, tube):
-        def __process(response: TubeMessage):
-            assert response.payload in data
-            data.remove(response.payload)
-        node.register_handler(topic, __process, tube)
-
-    @wrapp
-    def response_task(node, topic, name, tube):
-        def __process(request: TubeMessage):
-            assert request.payload[0:8] == 'request-'
-            if 'REQ-0' in request.payload:
-                time.sleep(1)
-            return request.create_response(f'response-{request.payload[8:]}')
-        node.register_handler(topic, __process, tube)
-        time.sleep(0.5)    # Wait for response_dealer_task registered
-        node.start()
-
-    tube_dealer = Tube(
-        name='DEALER',
-        addr=ADDR,
-        server=True,
-        tube_type=zmq.DEALER
-    )
-
-    tube_rep = Tube(
-        name='REP1',
-        addr=ADDR,
+        server=request.param['server'],
         tube_type=zmq.REP
     )
 
     node = TubeNode()
-    node.register_tube(tube_dealer, f"{TOPIC}/#")
-    node.register_tube(tube_rep, f"{TOPIC}/#")
+    node.register_tube(tube, f"{TOPIC}/#")
+    node.register_handler(f"{TOPIC}/#", __process)
+    return node
 
-    run_test_threads(
-        [request_task(node, TOPIC, 'DEALER_REQ', tube_dealer)],
-        [response_dealer_task(node, f'{TOPIC}/#', 'DEALER_RESP',
-                              tube_dealer),
-         response_task(node, f'{TOPIC}/#', 'REP1', tube_rep)]
+
+@pytest.fixture(params=[{'server': False}])
+def resp_node2(data2, request):
+    def __process(req):
+        if req.payload in data2:
+            data2.remove(req.payload)
+            return req.create_response(f'RESP{req.payload[-2:]}')
+
+    tube = Tube(
+        name='REP2',
+        addr=ADDR,
+        server=request.param['server'],
+        tube_type=zmq.REP
     )
+
+    node = TubeNode()
+    node.register_tube(tube, f"{TOPIC}/#")
+    node.register_handler(f"{TOPIC}/#", __process)
+    return node
+
+
+def test_dealer_reps(dealer_node, resp_node1, resp_node2, data, data2):
+    res = []
+
+    def __process(req):
+        res.append(req.payload)
+
+    dealer_node.register_handler(f"{TOPIC}/#", __process)
+
+    with dealer_node, resp_node1, resp_node2:
+        d1 = data.copy()
+        d2 = data2.copy()
+        while d1 and d2:
+            dealer_node.send(f"{TOPIC}/A", d1.pop(0))
+            dealer_node.send(f"{TOPIC}/A", d2.pop(0))
+        time.sleep(1)
+
+    assert len(res) == 4
+    assert len(data) == 0
+    assert len(data2) == 0
+
+
+def test_dealer_reps_on_same_node(dealer_node, data):
+    res = []
+
+    def __process(req):
+        res.append(req.payload)
+
+    dealer_node.register_handler(f"{TOPIC}/#", __process, dealer_node.tubes[0])
+
+    def __process_resp(req):
+        data.remove(req.payload)
+        return req.create_response(f'RESP-{req.payload[-2:]}')
+
+    tube = Tube(
+        name='RESP',
+        addr=ADDR,
+        server=False,
+        tube_type=zmq.REP
+    )
+    dealer_node.register_tube(tube, f"{TOPIC}/#")
+    dealer_node.register_handler(f"{TOPIC}/#", __process_resp, tube)
+
+    with dealer_node:
+        for it in data.copy():
+            dealer_node.send(f"{TOPIC}/A", it)
+        time.sleep(.1)
+
+    assert len(res) == 2
     assert len(data) == 0

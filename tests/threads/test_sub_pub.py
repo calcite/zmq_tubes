@@ -1,191 +1,156 @@
-from time import sleep
+import time
+
+import pytest
 
 import zmq
 
-from ..helpers import run_test_threads, wrapp, cleanup_threads
+from ..helpers import run_test_threads, wrapp
 from zmq_tubes.threads import Tube, TubeNode
 
 ADDR = 'ipc:///tmp/sub_pub.pipe'
 TOPIC = 'sub'
 
 
-@cleanup_threads
-def test_sub_pubs():
-    """
-        The subscriber is server and two clients publish messages.
-    """
-    data = ['PUB10', 'PUB11', 'PUB20', 'PUB21']
-    data2 = ['PUB10', 'PUB11', 'PUB20', 'PUB21']
+@pytest.fixture
+def data():
+    return ['PUB10', 'PUB11', 'PUB20', 'PUB21']
 
-    @wrapp
-    def pub_task(node, topic, name):
-        sleep(2)
-        for it in range(0, 2):
-            node.publish(topic, f"{name}{it}")
-        sleep(2)
 
-    @wrapp
-    def sub_task(node, topic, name):
-        def __process(response):
-            assert response.payload in data
-            data.remove(response.payload)
+@pytest.fixture
+def data2():
+    return ['PUB10', 'PUB11', 'PUB20', 'PUB21']
 
-        def __process2(response):
-            assert response.payload in data2
-            data2.remove(response.payload)
 
-        node.subscribe(topic, __process)
-        node.subscribe(topic, __process2)
-        node.start()
+@pytest.fixture(params=[{'server': True}])
+def sub_node(data, request):
+    def __process(req):
+        data.remove(req.payload)
 
     tube = Tube(
-        name='SUB',
-        addr=ADDR,
-        server=True,
-        tube_type=zmq.SUB
-    )
-
-    tube1 = Tube(
-        name='PUB1',
-        addr=ADDR,
-        tube_type=zmq.PUB
-    )
-
-    tube2 = Tube(
-        name='PUB2',
-        addr=ADDR,
-        tube_type=zmq.PUB
-    )
-
-    sub_node = TubeNode()
-    sub_node.register_tube(tube, f"{TOPIC}/#")
-
-    pub_node1 = TubeNode()
-    pub_node1.register_tube(tube1, f"{TOPIC}/#")
-
-    pub_node2 = TubeNode()
-    pub_node2.register_tube(tube2, f"{TOPIC}/#")
-
-    with pub_node1, pub_node2:
-        run_test_threads(
-            [
-                pub_task(pub_node1, TOPIC, 'PUB1'),
-                pub_task(pub_node2, TOPIC, 'PUB2')
-            ],
-            [sub_task(sub_node, f"{TOPIC}/#", 'SUB')],
-        )
-
-    assert len(data) == 0
-    assert len(data2) == 0
-
-
-@cleanup_threads
-def test_pub_subs():
-    """
-        The publisher is server and two clients subscribe messages.
-    """
-    data = ['PUB0', 'PUB1']
-    data2 = ['PUB0', 'PUB1']
-
-    @wrapp
-    def pub_task(tube, topic, name):
-        sleep(2)
-        for it in range(0, 2):
-            tube.publish(topic, f"PUB{it}")
-        sleep(2)
-
-    @wrapp
-    def sub_task(tube, topic, data, name):
-        def __process(response):
-            assert response.payload in data
-            data.remove(response.payload)
-        tube.subscribe(topic, __process)
-        tube.start()
-
-    tube_sub1 = Tube(
         name='SUB1',
         addr=ADDR,
+        server=request.param['server'],
         tube_type=zmq.SUB
     )
 
-    tube_sub2 = Tube(
+    node = TubeNode()
+    node.register_tube(tube, f"{TOPIC}/#")
+    node.register_handler(f"{TOPIC}/#", __process)
+    return node
+
+
+@pytest.fixture(params=[{'server': True}])
+def sub_node2(data2, request):
+    def __process(req):
+        data2.remove(req.payload)
+
+    tube = Tube(
         name='SUB2',
         addr=ADDR,
+        server=request.param['server'],
         tube_type=zmq.SUB
     )
 
-    tube_pub = Tube(
-        name='PUB',
+    node = TubeNode()
+    node.register_tube(tube, f"{TOPIC}/#")
+    node.register_handler(f"{TOPIC}/#", __process)
+    return node
+
+
+@pytest.fixture(params=[{'server': False}])
+def pub_node1(request):
+    tube = Tube(
+        name='PUB1',
         addr=ADDR,
-        server=True,
-        tube_type=zmq.PUB
-    )
-
-    node_sub1 = TubeNode()
-    node_sub1.register_tube(tube_sub1, f"{TOPIC}/#")
-
-    node_sub2 = TubeNode()
-    node_sub2.register_tube(tube_sub2, f"{TOPIC}/#")
-
-    node_pub = TubeNode()
-    node_pub.register_tube(tube_pub, f"{TOPIC}/#")
-
-    with node_pub:
-        run_test_threads(
-            [pub_task(node_pub, TOPIC, 'PUB')],
-            [
-                sub_task(node_sub1, f"{TOPIC}/#", data, 'SUB1'),
-                sub_task(node_sub2, f"{TOPIC}/#", data2, 'SUB2')
-            ]
-        )
-    assert len(data) == 0
-    assert len(data2) == 0
-
-
-@cleanup_threads
-def test_pub_sub_on_same_node():
-    """
-        The publisher and client on the same node.
-    """
-    data = ['PUB0', 'PUB1']
-
-    @wrapp
-    def pub_task(tube, topic, name):
-        sleep(2)
-        for it in range(0, 2):
-            tube.publish(topic, f"PUB{it}")
-        sleep(2)
-
-    @wrapp
-    def sub_task(tube, topic, data, name):
-        def __process(response):
-            assert response.payload in data
-            data.remove(response.payload)
-        tube.subscribe(topic, __process)
-        tube.start()
-
-    tube_sub = Tube(
-        name='SUB1',
-        addr=ADDR,
-        tube_type=zmq.SUB
-    )
-
-    tube_pub = Tube(
-        name='PUB',
-        addr=ADDR,
-        server=True,
+        server=request.param['server'],
         tube_type=zmq.PUB
     )
 
     node = TubeNode()
-    node.register_tube(tube_pub, f"{TOPIC}/#")
-    node.register_tube(tube_sub, f"{TOPIC}/#")
+    node.register_tube(tube, f"{TOPIC}/#")
+    return node
 
-    with node:
+
+@pytest.fixture(params=[{'server': False}])
+def pub_node2(request):
+    tube = Tube(
+        name='PUB2',
+        addr=ADDR,
+        server=request.param['server'],
+        tube_type=zmq.PUB
+    )
+
+    node = TubeNode()
+    node.register_tube(tube, f"{TOPIC}/#")
+    return node
+
+
+def test_sub_pubs(sub_node, pub_node1, pub_node2, data):
+    """
+        The subscriber is server and two clients publish messages.
+    """
+
+    @wrapp
+    def __process(node, p, d):
+        for it in d.copy():
+            node.publish(f"{TOPIC}/{p}", it)
+
+    with sub_node, pub_node1, pub_node2:
         run_test_threads(
-            [pub_task(node, TOPIC, 'PUB')],
-            [
-                sub_task(node, f"{TOPIC}/#", data, 'SUB1'),
-            ]
+            __process(pub_node1, 'A', data[0:2]),
+            __process(pub_node2, 'B', data[2:]),
         )
+        time.sleep(1)
+
+    assert len(data) == 0
+
+
+@pytest.mark.parametrize("sub_node,sub_node2,pub_node1",
+                         [({'server': False}, {'server': False},
+                           {'server': True})],
+                         indirect=["sub_node", "sub_node2", "pub_node1"])
+def test_pub_subs(sub_node, sub_node2, pub_node1, data, data2):
+    """
+        The subscriber is server and two clients publish messages.
+    """
+
+    @wrapp
+    def __process(node, p, d):
+        for it in d.copy():
+            node.publish(f"{TOPIC}/{p}", it)
+
+    with pub_node1, sub_node, sub_node2:
+        run_test_threads(
+            __process(pub_node1, 'A', data),
+        )
+        time.sleep(1)
+
+    assert len(data) == 0
+    assert len(data2) == 0
+
+
+def test_pub_sub_on_same_node(sub_node, data):
+    """
+        The publisher and client on the same node.
+    """
+
+    def __process(node, p, d):
+        for it in d.copy():
+            node.publish(f"{TOPIC}/{p}", it)
+
+    tube = Tube(
+        name='PUB',
+        addr=ADDR,
+        server=False,
+        tube_type=zmq.PUB
+    )
+    sub_node.register_tube(tube, f"{TOPIC}/#")
+
+    with sub_node:
+        time.sleep(.1)  # we have to wait for server is ready
+        run_test_threads(
+            __process(sub_node, 'A', data),
+        )
+        time.sleep(1)
+
     assert len(data) == 0

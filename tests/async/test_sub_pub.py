@@ -1,203 +1,153 @@
 import asyncio
 
 import zmq
-import sys
 import pytest
 
-from ..helpers import run_test_tasks
 from zmq_tubes import Tube, TubeNode
 
-pytestmark = pytest.mark.skipif(sys.version_info < (3, 8),
-                                reason='requires python3.8')
+# pytestmark = pytest.mark.skipif(sys.version_info < (3, 8),
+#                                 reason='requires python3.8')
 
 ADDR = 'ipc:///tmp/sub_pub.pipe'
 TOPIC = 'sub'
 
 
-def test_sub_pubs():
+@pytest.fixture
+def data():
+    return ['PUB10', 'PUB11', 'PUB20', 'PUB21']
+
+
+@pytest.fixture
+def data2():
+    return ['PUB10', 'PUB11', 'PUB20', 'PUB21']
+
+
+@pytest.fixture(params=[{'server': True}])
+def sub_node(data, request):
+    async def __process(req):
+        data.remove(req.payload)
+
+    tube = Tube(
+        name='SUB1',
+        addr=ADDR,
+        server=request.param['server'],
+        tube_type=zmq.SUB
+    )
+
+    node = TubeNode()
+    node.register_tube(tube, f"{TOPIC}/#")
+    node.register_handler(f"{TOPIC}/#", __process)
+    return node
+
+
+@pytest.fixture(params=[{'server': True}])
+def sub_node2(data2, request):
+    async def __process(req):
+        data2.remove(req.payload)
+
+    tube = Tube(
+        name='SUB2',
+        addr=ADDR,
+        server=request.param['server'],
+        tube_type=zmq.SUB
+    )
+
+    node = TubeNode()
+    node.register_tube(tube, f"{TOPIC}/#")
+    node.register_handler(f"{TOPIC}/#", __process)
+    return node
+
+
+@pytest.fixture(params=[{'server': False}])
+def pub_node1(request):
+    tube = Tube(
+        name='PUB1',
+        addr=ADDR,
+        server=request.param['server'],
+        tube_type=zmq.PUB
+    )
+
+    node = TubeNode()
+    node.register_tube(tube, f"{TOPIC}/#")
+    return node
+
+
+@pytest.fixture(params=[{'server': False}])
+def pub_node2(request):
+    tube = Tube(
+        name='PUB2',
+        addr=ADDR,
+        server=request.param['server'],
+        tube_type=zmq.PUB
+    )
+
+    node = TubeNode()
+    node.register_tube(tube, f"{TOPIC}/#")
+    return node
+
+
+@pytest.mark.asyncio
+async def test_sub_pubs(sub_node, pub_node1, pub_node2, data):
     """
         The subscriber is server and two clients publish messages.
     """
-    data = ['PUB10', 'PUB11', 'PUB20', 'PUB21']
-    data2 = ['PUB10', 'PUB11', 'PUB20', 'PUB21']
 
-    async def pub_task(node, topic, name):
-        asyncio.current_task().set_name(name)
-        for it in range(0, 2):
-            node.publish(topic, f"{name}{it}")
-            await asyncio.sleep(.3)
+    async def step(node1, node2):
+        await asyncio.sleep(.2)  # we have to wait for server is ready
+        while data:
+            node1.publish(f"{TOPIC}/A", data[0])
+            node2.publish(f"{TOPIC}/B", data[1])
+            await asyncio.sleep(.1)  # we have to give server time for work
 
-    async def sub_task(node, topic, name):
-        async def __process(response):
-            assert response.payload in data
-            data.remove(response.payload)
+    with sub_node, pub_node1, pub_node2:
+        await asyncio.gather(asyncio.create_task(step(pub_node1, pub_node2)))
 
-        async def __process2(response):
-            assert response.payload in data2
-            data2.remove(response.payload)
-        asyncio.current_task().set_name(name)
-        node.subscribe(topic, __process)
-        node.subscribe(topic, __process2)
-        await node.start()
-
-    tube = Tube(
-        name='SUB',
-        addr=ADDR,
-        server=True,
-        tube_type=zmq.SUB
-    )
-
-    tube1 = Tube(
-        name='PUB1',
-        addr=ADDR,
-        tube_type=zmq.PUB
-    )
-
-    tube2 = Tube(
-        name='PUB2',
-        addr=ADDR,
-        tube_type=zmq.PUB
-    )
-
-    sub_node = TubeNode()
-    sub_node.register_tube(tube, f"{TOPIC}/#")
-
-    pub_node1 = TubeNode()
-    pub_node1.register_tube(tube1, f"{TOPIC}/#")
-    # In the case of publishing with asyncio, the first message is very often
-    # lost. The workaround is to connect the tube manually as soon as possible.
-    pub_node1.connect()
-
-    pub_node2 = TubeNode()
-    pub_node2.register_tube(tube2, f"{TOPIC}/#")
-    # In the case of publishing with asyncio, the first message is very often
-    # lost. The workaround is to connect the tube manually as soon as possible.
-    pub_node2.connect()
-
-    asyncio.run(
-        run_test_tasks(
-            [
-                pub_task(pub_node1, TOPIC, 'PUB1'),
-                pub_task(pub_node2, TOPIC, 'PUB2')
-            ],
-            [sub_task(sub_node, f"{TOPIC}/#", 'SUB')],
-        )
-    )
     assert len(data) == 0
-    assert len(data2) == 0
 
 
-def test_pub_subs():
+@pytest.mark.asyncio
+@pytest.mark.parametrize("sub_node,sub_node2,pub_node1",
+                         [({'server': False}, {'server': False},
+                           {'server': True})],
+                         indirect=["sub_node", "sub_node2", "pub_node1"])
+async def test_pub_subs(sub_node, sub_node2, pub_node1, data, data2):
     """
         The publisher is server and two clients subscribe messages.
     """
-    data = ['PUB0', 'PUB1']
-    data2 = ['PUB0', 'PUB1']
+    async def step(node):
+        await asyncio.sleep(.2)  # we have to wait for server is ready
+        for _ in range(len(data)):
+            node.publish(f"{TOPIC}/A", data[0])
+            await asyncio.sleep(.1)  # we have to give server time for work
 
-    async def pub_task(node, topic, name):
-        asyncio.current_task().set_name(name)
-        for it in range(0, 2):
-            node.publish(topic, f"PUB{it}")
-        await asyncio.sleep(2)
+    with sub_node, sub_node2, pub_node1:
+        await asyncio.gather(asyncio.create_task(step(pub_node1)))
 
-    async def sub_task(node, topic, data, name):
-        async def __process(response):
-            assert response.payload in data
-            data.remove(response.payload)
-        asyncio.current_task().set_name(name)
-        node.subscribe(topic, __process)
-        await node.start()
-
-    tube_sub1 = Tube(
-        name='SUB1',
-        addr=ADDR,
-        tube_type=zmq.SUB
-    )
-
-    tube_sub2 = Tube(
-        name='SUB2',
-        addr=ADDR,
-        tube_type=zmq.SUB
-    )
-
-    tube_pub = Tube(
-        name='PUB',
-        addr=ADDR,
-        server=True,
-        tube_type=zmq.PUB
-    )
-
-    node_sub1 = TubeNode()
-    node_sub1.register_tube(tube_sub1, f"{TOPIC}/#")
-
-    node_sub2 = TubeNode()
-    node_sub2.register_tube(tube_sub2, f"{TOPIC}/#")
-
-    node_pub = TubeNode()
-    node_pub.register_tube(tube_pub, f"{TOPIC}/#")
-    # In the case of publishing with asyncio, the first message is very often
-    # lost. The workaround is to connect the tube manually as soon as possible.
-    node_pub.connect()
-
-    asyncio.run(
-        run_test_tasks(
-            [pub_task(node_pub, TOPIC, 'PUB')],
-            [
-                sub_task(node_sub1, f"{TOPIC}/#", data, 'SUB1'),
-                sub_task(node_sub2, f"{TOPIC}/#", data2, 'SUB2')
-            ]
-        )
-    )
     assert len(data) == 0
     assert len(data2) == 0
 
 
-def test_pub_sub_on_same_node():
+@pytest.mark.asyncio
+async def test_pub_sub_on_same_node(sub_node, data):
     """
         The publisher and client on the same node.
     """
-    data = ['PUB0', 'PUB1']
 
-    async def pub_task(node, topic, name):
-        asyncio.current_task().set_name(name)
-        for it in range(0, 2):
-            node.publish(topic, f"PUB{it}")
-        await asyncio.sleep(2)
+    async def step(node):
+        await asyncio.sleep(.2)      # we have to wait for server is ready
+        for _ in range(len(data)):
+            node.publish(f"{TOPIC}/A", data[0])
+            await asyncio.sleep(.1)  # we have to give server time for work
 
-    async def sub_task(node, topic, data, name):
-        async def __process(response):
-            assert response.payload in data
-            data.remove(response.payload)
-        asyncio.current_task().set_name(name)
-        node.subscribe(topic, __process)
-        await node.start()
-
-    tube_sub = Tube(
-        name='SUB1',
-        addr=ADDR,
-        tube_type=zmq.SUB
-    )
-
-    tube_pub = Tube(
+    tube = Tube(
         name='PUB',
         addr=ADDR,
-        server=True,
+        server=False,
         tube_type=zmq.PUB
     )
-    # In the case of publishing with asyncio, the first message is very often
-    # lost. The workaround is to connect the tube manually as soon as possible.
-    tube_pub.connect()
+    sub_node.register_tube(tube, f"{TOPIC}/#")
 
-    node_pub = TubeNode()
-    node_pub.register_tube(tube_pub, f"{TOPIC}/#")
-    node_pub.register_tube(tube_sub, f"{TOPIC}/#")
+    with sub_node:
+        await asyncio.gather(asyncio.create_task(step(sub_node)))
 
-    asyncio.run(
-        run_test_tasks(
-            [pub_task(node_pub, TOPIC, 'PUB')],
-            [
-                sub_task(node_pub, f"{TOPIC}/#", data, 'SUB1'),
-            ]
-        )
-    )
     assert len(data) == 0

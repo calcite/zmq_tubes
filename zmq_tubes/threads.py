@@ -90,8 +90,8 @@ class Tube(AsyncTube):
             self.send(request)
             # if request.raw_socket.poll(timeout * 1000) == zmq.POLLIN:
             counter = timeout
-            res = request.raw_socket.poll(1000)
-            while res != 0 or (counter != 0 and not self.is_closed):
+            res = request.raw_socket.poll(100)
+            while res != 0 or (counter > 0 and not self.is_closed):
                 if res != 0:
                     response = self.receive_data(raw_socket=request.raw_socket)
                     if response.topic != request.topic:
@@ -102,8 +102,8 @@ class Tube(AsyncTube):
                 elif counter == 0:
                     self.logger.error("The request timout")
                     break
-                counter -= 1
-                res = request.raw_socket.poll(1000)
+                counter -= .1
+                res = request.raw_socket.poll(100)
         finally:
             if not self.is_persistent:
                 self.logger.debug(f"Close tube {self.name}")
@@ -136,6 +136,14 @@ class TubeNode(AsyncTubeNode):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.__main_thread = None
+
+    def __enter__(self):
+        self.connect()
+        self.start()
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.stop()
+        self.close()
 
     def request(self, topic: str, payload=None, timeout=30) \
             -> TubeMessage:
@@ -170,6 +178,10 @@ class TubeNode(AsyncTubeNode):
                         "from request object.")
             try:
                 tube.send(response)
+            except TubeConnectionError:
+                self.logger.warning(
+                    f"The client (tube '{tube.name}') closes the socket for "
+                    f"sending answer. Probably timeout.")
             except TubeThreadDeadLock:
                 self.logger.error(
                     f"The tube '{tube.name}' waits more then "
