@@ -16,8 +16,8 @@ The whole system is hierarchical, based on topics
 - **TubeNode** - This represents an application interface for communication via tubes.
 
 
-## Asyncion / Threading
-The library support bot method. 
+## Asyncio / Threading
+The library support bot method. Asyncio from Python 3.7.
 
 ```python
 from zmq_tubes import TubeNode, Tube            # Asyncio classes
@@ -67,15 +67,16 @@ async def handler(request: TubeMessage):
   return request.create_response('response')
 
 
-with open('test.yml', 'r+') as fd:    
+async def run():
+  with open('test.yml', 'r+') as fd:
     schema = yaml.safe_load(fd)
+  node = TubeNode(schema=schema)
+  node.register_handler('server/#', handler)
+  with node:
+      node.publish('foo/pub/test', 'message 1')
+      print(await node.request('foo/xxx', 'message 2'))
 
-node = TubeNode(schema=schema)
-node.register_handler('server/#', handler)
-asyncio.current_task(node.start(), name="Server")
-
-node.publish('foo/pub/test', 'message 1')
-print(await node.request('foo/xxx', 'message 2'))
+asyncio.run(run())
 ```
 
 

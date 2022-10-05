@@ -1,3 +1,5 @@
+import sys
+
 import asyncio
 import json
 import logging
@@ -16,6 +18,8 @@ class TubeMessageTimeout(TubeException): pass       # flake8: E701
 class TubeMethodNotSupported(TubeException): pass   # flake8: E701
 class TubeConnectionError(TubeException): pass   # flake8: E701
 
+
+LESS38 = sys.version_info < (3, 8)
 
 TUBE_TYPE_MAPPING = {
     'SUB': zmq.SUB,
@@ -431,7 +435,8 @@ class TubeNode:
 
     def __enter__(self):
         self.connect()
-        asyncio.create_task(self.start(), name='zmq/main')
+        args = {} if LESS38 else {'name': 'zmq/main'}
+        asyncio.create_task(self.start(), **args)
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
@@ -631,17 +636,21 @@ class TubeNode:
                         )
                     continue
                 if tube.tube_type == zmq.SUB:
+                    args = {} if LESS38 else {'name': 'zmq/sub'}
                     for callback in callbacks:
-                        loop.create_task(callback(request), name='zmq/sub')
+                        loop.create_task(callback(request), **args)
                 elif tube.tube_type == zmq.REP:
+                    args = {} if LESS38 else {'name': 'zmq/rep'}
                     loop.create_task(
                         _callback_wrapper(callbacks[-1], request),
-                        name='zmq/rep')
+                        **args)
                 elif tube.tube_type == zmq.ROUTER:
+                    args = {} if LESS38 else {'name': 'zmq/router'}
                     loop.create_task(
                         _callback_wrapper(callbacks[-1], request),
-                        name='zmq/router'
+                        **args
                     )
                 elif tube.tube_type == zmq.DEALER:
-                    loop.create_task(callbacks[-1](request), name='zmq/dealer')
+                    args = {} if LESS38 else {'name': 'zmq/dealer'}
+                    loop.create_task(callbacks[-1](request), **args)
         self.logger.info("The main loop was ended.")

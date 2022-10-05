@@ -1,3 +1,5 @@
+import sys
+
 import asyncio
 
 import zmq
@@ -5,8 +7,8 @@ import pytest
 
 from zmq_tubes import Tube, TubeNode
 
-# pytestmark = pytest.mark.skipif(sys.version_info < (3, 8),
-#                                 reason='requires python3.8')
+pytestmark = pytest.mark.skipif(sys.version_info < (3, 7),
+                                reason='requires python3.7')
 
 ADDR = 'ipc:///tmp/dealer_rep.pipe'
 TOPIC = 'req'
@@ -90,7 +92,7 @@ async def test_dealer_reps(dealer_node, resp_node1, resp_node2, data, data2):
             dealer_node.send(f"{TOPIC}/A", data[0])
             dealer_node.send(f"{TOPIC}/A", data2[0])
             await asyncio.sleep(.2)
-        await asyncio.sleep(1)
+        await asyncio.sleep(1.2)
 
     assert len(res) == 4
     assert len(data) == 0
