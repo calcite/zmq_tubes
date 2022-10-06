@@ -2,11 +2,12 @@ name: Developing
 
 # Controls when the workflow will run
 on:
-#  push:
-#    paths:
-#      - '**.py'
-#    branches:
-#      - '**'
+  push:
+    paths:
+      - '**.py'
+      - '**.yml'
+    branches:
+      - '**'
   pull_request:
     paths:
       - '**.py'

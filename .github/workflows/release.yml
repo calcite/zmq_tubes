@@ -31,7 +31,9 @@ jobs:
         shell: bash
         run: |
           poetry version minor
-          git tag "v$(poetry version -s )"
+          VERSION="$(poetry version -s)"
+          echo "VERSION=${VERSION}" >> $GITHUB_ENV
+          git tag "v${VERSION}"
 
       - name: Publish to PyPI
         shell: bash
@@ -46,6 +48,13 @@ jobs:
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           files: pyproject.toml
-          message: 'bump version'
+          message: 'bump version to ${env.VERSION}'
           tags: True
 
+      - name: Create Release
+        uses: ncipollo/release-action@v1
+        with:
+          generateReleaseNotes: true
+          name: "v${env.VERSION}"
+          tag: "v${env.VERSION}"
+          token: ${{ secrets.YOUR_GITHUB_TOKEN }}
