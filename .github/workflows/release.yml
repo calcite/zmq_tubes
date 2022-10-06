@@ -57,4 +57,3 @@ jobs:
           generateReleaseNotes: true
           name: "v${env.VERSION}"
           tag: "v${env.VERSION}"
-          token: ${{ secrets.YOUR_GITHUB_TOKEN }}
