@@ -391,7 +391,7 @@ class Tube:
             )
         try:
             self.send(request)
-            while await request.raw_socket.poll(timeout * 1000) != 0:
+            if await request.raw_socket.poll(timeout * 1000) != 0:
                 response = await self.receive_data(
                     raw_socket=request.raw_socket)
                 if response.topic != request.topic:
@@ -399,6 +399,8 @@ class Tube:
                         f"The response comes to different topic "
                         f"({request.topic} != {response.topic}).")
                 return response
+            else:
+                self.logger.error("The request timout")
         finally:
             if not self.is_persistent:
                 self.logger.debug(f"Close tube {self.name}")
