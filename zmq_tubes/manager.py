@@ -1,3 +1,5 @@
+import sys
+
 import asyncio
 import json
 import logging
@@ -10,11 +12,14 @@ from zmq_tubes.matcher import TopicMatcher
 
 
 class TubeException(Exception): pass            # flake8: E701
-class TubeTopicNotConfigured(Exception): pass   # flake8: E701
-class TubeMessageError(Exception): pass         # flake8: E701
-class TubeMessageTimeout(Exception): pass       # flake8: E701
-class TubeMethodNotSupported(Exception): pass         # flake8: E701
+class TubeTopicNotConfigured(TubeException): pass   # flake8: E701
+class TubeMessageError(TubeException): pass         # flake8: E701
+class TubeMessageTimeout(TubeException): pass       # flake8: E701
+class TubeMethodNotSupported(TubeException): pass   # flake8: E701
+class TubeConnectionError(TubeException): pass   # flake8: E701
 
+
+LESS38 = sys.version_info < (3, 8)
 
 TUBE_TYPE_MAPPING = {
     'SUB': zmq.SUB,
@@ -339,6 +344,9 @@ class Tube:
         """
         raw_msg = message.format_message()
         self.logger.debug("Send (tube: %s) to %s", self.name, raw_msg)
+        if not message.raw_socket or message.raw_socket.closed:
+            raise TubeConnectionError(
+                f'The tube {message.tube.name} is already closed.')
         try:
             message.raw_socket.send_multipart(raw_msg)
         except (TypeError, zmq.ZMQError) as ex:
@@ -394,7 +402,10 @@ class Tube:
         finally:
             if not self.is_persistent:
                 self.logger.debug(f"Close tube {self.name}")
-                request.raw_socket.close()
+                if request.raw_socket and not request.raw_socket.closed:
+                    request.raw_socket.close()
+        if self.is_closed:
+            raise TubeConnectionError(f'The tube {self.name} was closed.')
         raise TubeMessageTimeout(
             f"No answer for the request in {timeout}s. Topic: {request.topic}")
 
@@ -424,7 +435,9 @@ class TubeNode:
 
     def __enter__(self):
         self.connect()
-        self.start()
+        args = {} if LESS38 else {'name': 'zmq/main'}
+        asyncio.create_task(self.start(), **args)
+        return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.stop()
@@ -609,6 +622,7 @@ class TubeNode:
         self.logger.info("The main loop was started.")
         while not self._stop_main_loop:
             events = await poller.poll(timeout=100)
+            # print(events)
             for event in events:
                 raw_socket = event[0]
                 tube: Tube = raw_socket.__dict__['tube']
@@ -622,17 +636,21 @@ class TubeNode:
                         )
                     continue
                 if tube.tube_type == zmq.SUB:
+                    args = {} if LESS38 else {'name': 'zmq/sub'}
                     for callback in callbacks:
-                        loop.create_task(callback(request), name='zmq/sub')
+                        loop.create_task(callback(request), **args)
                 elif tube.tube_type == zmq.REP:
+                    args = {} if LESS38 else {'name': 'zmq/rep'}
                     loop.create_task(
                         _callback_wrapper(callbacks[-1], request),
-                        name='zmq/rep')
+                        **args)
                 elif tube.tube_type == zmq.ROUTER:
+                    args = {} if LESS38 else {'name': 'zmq/router'}
                     loop.create_task(
                         _callback_wrapper(callbacks[-1], request),
-                        name='zmq/router'
+                        **args
                     )
                 elif tube.tube_type == zmq.DEALER:
-                    loop.create_task(callbacks[-1](request), name='zmq/dealer')
+                    args = {} if LESS38 else {'name': 'zmq/dealer'}
+                    loop.create_task(callbacks[-1](request), **args)
         self.logger.info("The main loop was ended.")

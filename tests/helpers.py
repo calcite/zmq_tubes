@@ -55,14 +55,10 @@ class ExcThread(Thread):
             self.exc = ex
 
 
-def run_test_threads(finite_tasks, infinite_tasks, timeout=20):
-
-    infinite = set()
-    for task in infinite_tasks:
-        infinite.add(task())
+def run_test_threads(*args, timeout=20):
 
     finite = set()
-    for task in finite_tasks:
+    for task in args:
         tt = ExcThread(target=task)
         tt.start()
         finite.add(tt)

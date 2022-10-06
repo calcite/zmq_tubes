@@ -1,154 +1,134 @@
+import sys
+
 import asyncio
 import zmq
-import sys
 import pytest
 
 from zmq_tubes.manager import TubeMessageTimeout
-from ..helpers import run_test_tasks
 from zmq_tubes import Tube, TubeNode
 
-pytestmark = pytest.mark.skipif(sys.version_info < (3, 8),
-                                reason='requires python3.8')
+pytestmark = pytest.mark.skipif(sys.version_info < (3, 7),
+                                reason='requires python3.7')
 
 ADDR = 'ipc:///tmp/req_resp.pipe'
 TOPIC = 'req'
 
 
-def test_req_resp():
-
-    async def request_task(node, topic, name, number=2, timeout=30):
-        asyncio.current_task().set_name(name)
-        for it in range(0, number):
-            resp = await node.request(topic, f"request-{name}-{it}",
-                                      timeout=timeout)
-            assert resp.payload == f"response-{name}-{it}"
-
-    async def response_task(node, topic):
-        async def __process(message):
-            assert message.payload[0:8] == 'request-'
-            return f'response-{message.payload[8:]}'
-        asyncio.current_task().set_name('RESP')
-        node.register_handler(topic, __process)
-        await node.start()
-
-    tube_req1 = Tube(
-        name='REQ1',
-        addr=ADDR,
-        tube_type=zmq.REQ
-    )
-    tube_req2 = Tube(
-        name='REQ2',
-        addr=ADDR,
-        tube_type=zmq.REQ
-    )
-    tube_resp = Tube(
-        name='RESP',
-        addr=ADDR,
-        server=True,
-        tube_type=zmq.REP
-    )
-    node_req1 = TubeNode()
-    node_req1.register_tube(tube_req1, f"{TOPIC}/#")
-
-    node_req2 = TubeNode()
-    node_req2.register_tube(tube_req2, f"{TOPIC}/#")
-
-    node_resp = TubeNode()
-    node_resp.register_tube(tube_resp, f"{TOPIC}/#")
-
-    asyncio.run(
-        run_test_tasks(
-            [request_task(node_req1, f'{TOPIC}/aaa', 'REQ1'),
-             request_task(node_req2, f'{TOPIC}', 'REQ2')],
-            [response_task(node_resp, f'{TOPIC}/#')]
-        )
-    )
+@pytest.fixture
+def data():
+    return ['REQ10', 'REQ11', 'REQ20', 'REQ21']
 
 
-def test_req_resp_on_same_node():
-    """
-        The req/resp and client on the same node.
-    """
+@pytest.fixture(params=[{'server': True, 'sleep': None}])
+def resp_node(data, request):
+    async def __process(req):
+        data.remove(req.payload)
+        if request.param['sleep']:
+            await asyncio.sleep(request.param['sleep'])
+        return req.create_response(f'RESP{req.payload[-2:]}')
 
-    async def request_task(node, topic, name, number=2, timeout=30):
-        asyncio.current_task().set_name(name)
-        for it in range(0, number):
-            resp = await node.request(topic, f"request-{name}-{it}",
-                                      timeout=timeout)
-            assert resp.payload == f"response-{name}-{it}"
-
-    async def response_task(node, topic):
-        async def __process(message):
-            assert message.payload[0:8] == 'request-'
-            return f'response-{message.payload[8:]}'
-        asyncio.current_task().set_name('RESP')
-        node.register_handler(topic, __process)
-        await node.start()
-
-    tube1 = Tube(
-        name='REQ',
-        addr=ADDR,
-        tube_type=zmq.REQ
-    )
-
-    tube2 = Tube(
+    tube = Tube(
         name='REP',
         addr=ADDR,
-        server=True,
+        server=request.param['server'],
         tube_type=zmq.REP
     )
 
     node = TubeNode()
-    node.register_tube(tube1, f"{TOPIC}/#")
-    node.register_tube(tube2, f"{TOPIC}/#")
-
-    asyncio.run(
-        run_test_tasks(
-            [request_task(node, TOPIC, 'REQ1')],
-            [response_task(node, f'{TOPIC}/#')]
-        )
-    )
+    node.register_tube(tube, f"{TOPIC}/#")
+    node.register_handler(f"{TOPIC}/#", __process)
+    return node
 
 
-def test_req_resp_timeout():
-
-    async def request_task(node, topic, name):
-        asyncio.current_task().set_name(name)
-        try:
-            await node.request(topic, "request", timeout=1)
-            assert False, "The TubeMessageTimeout exception was not fired."
-        except TubeMessageTimeout:
-            pass
-
-    async def response_task(node, topic):
-        async def __process(message):
-            await asyncio.sleep(5)
-            return 'response'
-        asyncio.current_task().set_name('RESP')
-        node.register_handler(topic, __process)
-        await node.start()
-
-    tube_req1 = Tube(
-        name='REQ',
+@pytest.fixture(params=[{'server': False}])
+def req_node1(request):
+    tube = Tube(
+        name='REQ1',
         addr=ADDR,
+        server=request.param['server'],
         tube_type=zmq.REQ
     )
-    tube_resp = Tube(
-        name='RESP',
+
+    node = TubeNode()
+    node.register_tube(tube, f"{TOPIC}/#")
+    return node
+
+
+@pytest.fixture(params=[{'server': False}])
+def req_node2(request):
+    tube = Tube(
+        name='REQ2',
         addr=ADDR,
-        server=True,
-        tube_type=zmq.REP
+        server=request.param['server'],
+        tube_type=zmq.REQ
     )
-    node_req1 = TubeNode()
-    node_req1.register_tube(tube_req1, f"{TOPIC}/#")
 
-    node_resp = TubeNode()
-    node_resp.register_tube(tube_resp, f"{TOPIC}/#")
+    node = TubeNode()
+    node.register_tube(tube, f"{TOPIC}/#")
+    return node
 
-    asyncio.run(
-        run_test_tasks(
-            [request_task(node_req1, f'{TOPIC}/aaa', 'REQ1')],
-            [response_task(node_resp, f'{TOPIC}/#')],
-            sleep=5
+
+@pytest.mark.asyncio
+async def test_resp_reqs(resp_node, req_node1, req_node2, data):
+    res = []
+
+    async def step(node, p, delay=None):
+        if delay:
+            await asyncio.sleep(delay)  # distance between tasks
+        while data:
+            resp = await node.request(f"{TOPIC}/{p}", data[0], timeout=1)
+            res.append('RESP' in resp.payload)
+
+    with resp_node:
+        await asyncio.gather(
+            asyncio.create_task(step(req_node1, 'A')),
+            asyncio.create_task(step(req_node2, 'B', delay=.1))
         )
+    assert all(res)
+    assert len(data) == 0
+
+
+@pytest.mark.asyncio
+async def test_req_resp_on_same_node(resp_node, data):
+    res = []
+
+    async def step(node, p, d):
+        for it in d:
+            resp = await node.request(f"{TOPIC}/{p}", it, timeout=1)
+            res.append('RESP' in resp.payload)
+
+    tube = Tube(
+        name='REQ',
+        addr=ADDR,
+        server=False,
+        tube_type=zmq.REQ
     )
+    resp_node.register_tube(tube, f"{TOPIC}/#")
+
+    with resp_node:
+        await asyncio.gather(
+            asyncio.create_task(step(resp_node, 'A', data.copy())),
+        )
+    assert all(res)
+    assert len(data) == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("resp_node",
+                         [({'server': True, 'sleep': 3})],
+                         indirect=["resp_node"])
+async def test_req_resp_timeout(resp_node, req_node1, data):
+    res = []
+
+    async def step(node, p):
+        try:
+            await node.request(f"{TOPIC}/{p}", data[0], timeout=.5)
+            res.append(False)
+        except TubeMessageTimeout:
+            res.append(True)
+
+    with resp_node:
+        await asyncio.gather(
+            asyncio.create_task(step(req_node1, 'A')),
+        )
+    assert all(res)
