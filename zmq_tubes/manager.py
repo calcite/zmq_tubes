@@ -566,13 +566,14 @@ class TubeNode:
                                              f'dealer.')
         tube.send(topic, payload)
 
-    async def request(self, topic: str, payload=None, timeout=30) \
-            -> TubeMessage:
+    async def request(self, topic: str, payload=None, timeout=30,
+                      post_send_callback=None) -> TubeMessage:
         tube = self.get_tube_by_topic(topic, [zmq.REQ])
         if not tube:
             raise TubeTopicNotConfigured(f'The topic "{topic}" is not assigned '
                                          f'to any Tube for request.')
-        res = await tube.request(topic, payload, timeout)
+        res = await tube.request(topic, payload, timeout=timeout,
+                                 post_send_callback=post_send_callback)
         return res
 
     def publish(self, topic: str, payload=None):

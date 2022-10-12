@@ -152,13 +152,14 @@ class TubeNode(AsyncTubeNode):
         self.stop()
         self.close()
 
-    def request(self, topic: str, payload=None, timeout=30) \
-            -> TubeMessage:
+    def request(self, topic: str, payload=None, timeout=30,
+                post_send_callback=None) -> TubeMessage:
         tube = self.get_tube_by_topic(topic, [zmq.REQ])
         if not tube:
             raise TubeTopicNotConfigured(f'The topic "{topic}" is not assigned '
                                          f'to any Tube for request.')
-        res = tube.request(topic, payload, timeout)
+        res = tube.request(topic, payload, timeout=timeout,
+                           post_send_callback=post_send_callback)
         return res
 
     def stop(self):
