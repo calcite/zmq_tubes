@@ -50,37 +50,49 @@ class Tube(AsyncTube):
         finally:
             self.lock.release()
 
-    def request(self, *args, **kwargs) -> TubeMessage:
+    def request(self, *args, post_send_callback=None, **kwargs) -> TubeMessage:
         """
                 Send request
                 :param request: Optional[TubeMessage]
                 :param topic: Optional[str]
                 :param payload: Optional[dict]
                 :param timeout: int
+                :param post_send_callback: Optional[Callable]
                 :return: TubeMessage
                 """
         if args:
             if isinstance(args[0], TubeMessage):
-                return self.__request_message(*args, **kwargs)
+                return self.__request_message(
+                    *args, post_send_callback=post_send_callback, **kwargs
+                )
             elif isinstance(args[0], str):
-                return self.__request_payload(*args, **kwargs)
+                return self.__request_payload(
+                    *args, post_send_callback=post_send_callback, **kwargs
+                )
         elif kwargs:
             if 'message' in kwargs:
-                return self.__request_message(**kwargs)
+                return self.__request_message(
+                    post_send_callback=post_send_callback, **kwargs
+                )
             elif 'topic' in kwargs:
-                return self.__request_payload(**kwargs)
+                return self.__request_payload(
+                    post_send_callback=post_send_callback, **kwargs
+                )
         raise NotImplementedError("Unknown type of topic")
 
-    def __request_payload(self, topic: str, payload=None, timeout=None):
+    def __request_payload(self, topic: str, payload=None, timeout=None,
+                          post_send_callback=None):
         request = TubeMessage(
             self,
             payload=payload,
             topic=topic,
-            raw_socket=self.raw_socket
+            raw_socket=self.raw_socket,
         )
-        return self.request(request, timeout)
+        return self.request(request, timeout=timeout,
+                            post_send_callback=post_send_callback)
 
-    def __request_message(self, request: TubeMessage, timeout: int = 30):
+    def __request_message(self, request: TubeMessage, timeout: int = 30,
+                          post_send_callback=None):
         if self.tube_type != zmq.REQ:
             raise TubeMethodNotSupported(
                 f"The tube '{self.name}' (type: '{self.tube_type_name}') "
@@ -88,6 +100,8 @@ class Tube(AsyncTube):
             )
         try:
             self.send(request)
+            if post_send_callback:
+                post_send_callback(request)
             if request.raw_socket.poll(timeout * 1000) != 0:
                 response = self.receive_data(raw_socket=request.raw_socket)
                 if response.topic != request.topic:
