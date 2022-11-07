@@ -1,3 +1,5 @@
+import time
+
 import sys
 
 import asyncio
@@ -6,6 +8,7 @@ import logging
 from collections.abc import Callable
 
 import zmq
+from zmq import SocketOption
 from zmq.asyncio import Poller, Context, Socket
 
 from zmq_tubes.matcher import TopicMatcher
@@ -20,6 +23,10 @@ class TubeConnectionError(TubeException): pass   # flake8: E701
 
 
 LESS38 = sys.version_info < (3, 8)
+
+SOCKET_OPTION_VALUE_TO_NAME = {
+    member.value: name for name, member in SocketOption.__members__.items()
+}
 
 TUBE_TYPE_MAPPING = {
     'SUB': zmq.SUB,
@@ -146,6 +153,7 @@ class Tube:
             str(kwargs.get('server', '')).lower() in ('yes', 'true', '1')
         self.tube_type = kwargs.get('tube_type')
         self.identity = kwargs.get('identity')
+        self.monitor = kwargs.get('monitor')
 
     @staticmethod
     def get_tube_type_name(tube_type):
@@ -186,20 +194,21 @@ class Tube:
         self._name = val
 
     @property
-    def tube_type(self) -> str:
+    def tube_type(self) -> int:
         """
         returns the tube type
         """
         return self._tube_type
 
     @property
-    def tube_type_name(self):
+    def tube_type_name(self) -> str:
         return self.get_tube_type_name(self._tube_type)
 
     @tube_type.setter
     def tube_type(self, val):
         """
         set the tube type
+        @param val : str|int
         """
         if not isinstance(val, int):
             self._tube_type = TUBE_TYPE_MAPPING.get(val)
@@ -349,6 +358,14 @@ class Tube:
                 f'The tube {message.tube.name} is already closed.')
         try:
             message.raw_socket.send_multipart(raw_msg)
+            try:
+                if self.monitor:
+                    self.monitor.send_message(message)
+            except Exception as ex:
+                self.logger.error(
+                    "The error with sending of an outgoing message "
+                    "to the monitor tube.",
+                    exc_info=ex)
         except (TypeError, zmq.ZMQError) as ex:
             raise TubeMessageError(
                 f"The message '{message}' does not be sent.") from ex
@@ -440,17 +457,113 @@ class Tube:
             f"Received (tube {self.name}): {raw_data}")
         message = TubeMessage(tube=self, raw_socket=raw_socket)
         message.parse(raw_data)
+        try:
+            if self.monitor:
+                self.monitor.receive_message(message)
+        except Exception as ex:
+            self.logger.error("The error with sending of an incoming message "
+                              "to the monitor tube.",
+                              exc_info=ex)
         return message
+
+
+class TubeMonitor:
+
+    CACHE = {}
+
+    def __new__(cls, *args, **kwargs):
+        addr = args[0] if args else kwargs.get('addr')
+        if addr not in cls.CACHE:
+            cls.CACHE[addr] = super(TubeMonitor, cls).__new__(cls)
+        return cls.CACHE[addr]
+
+    def __init__(self, addr: str):
+        # Because singleton execute __init__ for each try.
+        if hasattr(self, 'addr') and self.addr:
+            return
+        self.addr = addr
+        self.context = Context.instance()
+        self.raw_socket = None
+        self.enabled = False
+        self.node = None
+        self.__tubes = set()
+        self._time = time.time()
+        self.logger = logging.getLogger(self.__class__.__name__)
+
+    def register_tube(self, tube: Tube):
+        self.__tubes.add(tube)
+        tube.monitor = self
+
+    def connect(self):
+        self.raw_socket = self.context.socket(zmq.PAIR)
+        self.raw_socket.bind(self.addr)
+        self.raw_socket.__dict__['monitor'] = self
+
+    def close(self):
+        if self.raw_socket:
+            self.raw_socket.close()
+            self.raw_socket = None
+        self.enabled = False
+
+    def __format_tubes_info(self, tube):
+        res = {
+            'name': tube.name,
+            'addr': tube.addr,
+            'tube_type': tube.tube_type_name,
+        }
+        if tube.is_server:
+            res['server'] = 'yes'
+        if tube.monitor:
+            res['monitor'] = tube.monitor.addr
+        sockopts = tube.sockopts
+        if sockopts:
+            res['sockopts'] = {SOCKET_OPTION_VALUE_TO_NAME[k]: v.decode()
+                               for k, v in sockopts.items()}
+        return res
+
+    def __process_cmd(self, raw_data):
+        if raw_data == b'enabled':
+            self.enabled = True
+            self._time = time.time()
+        elif raw_data == b'disabled':
+            self.enabled = False
+        elif raw_data == b'get_schema':
+            schema = [self.__format_tubes_info(t) for t in self.__tubes]
+            schema = {'tubes': schema}
+            self.raw_socket.send(json.dumps(schema).encode())
+
+    async def process(self):
+        if self.raw_socket:
+            self.__process_cmd(await self.raw_socket.recv())
+
+    def __format_message(self, msg: TubeMessage, direct: str):
+        now = time.time()
+        delta_time = str(now - self._time).encode()
+        self._time = now
+        return [delta_time, msg.tube.name.encode(), direct.encode()] + \
+               msg.format_message()[-2:]
+
+    def send_message(self, msg: TubeMessage):
+        if self.raw_socket and self.enabled:
+            row_msg = self.__format_message(msg, '>')
+            self.raw_socket.send_multipart(row_msg)
+
+    def receive_message(self, msg: TubeMessage):
+        if self.raw_socket and self.enabled:
+            row_msg = self.__format_message(msg, '<')
+            self.raw_socket.send_multipart(row_msg)
 
 
 class TubeNode:
 
     __TUBE_CLASS = Tube
+    __MONITOR_CLASS = TubeMonitor
 
     def __init__(self, *, schema=None, warning_not_mach_topic=True):
         self.logger = logging.getLogger(self.__class__.__name__)
         self._tubes = TopicMatcher()
         self._callbacks = TopicMatcher()
+        self.__monitors = set()
         if schema:
             self.parse_schema(schema)
         self._stop_main_loop = False
@@ -479,6 +592,8 @@ class TubeNode:
         """
         for tube in self.tubes:
             tube.connect()
+        for monitor in self.__monitors:
+            monitor.connect()
 
     def close(self):
         """
@@ -486,6 +601,8 @@ class TubeNode:
         """
         for tube in self.tubes:
             tube.close()
+        for monitor in self.__monitors:
+            monitor.close()
 
     def parse_schema(self, schema):
         """
@@ -493,8 +610,26 @@ class TubeNode:
         """
         if 'tubes' in schema:
             for tube_info in schema['tubes']:
+                monitor = None
+                if 'monitor' in tube_info:
+                    monitor = self.__MONITOR_CLASS(tube_info['monitor'])
+                    del tube_info['monitor']
                 tube = self.__TUBE_CLASS(**tube_info)
                 self.register_tube(tube, tube_info.get('topics', []))
+                if monitor:
+                    self.register_monitor(tube, monitor)
+
+    def register_monitor(self, tube: Tube, monitor: TubeMonitor):
+        """
+        Register monitor to tube
+        :param tube: Tube
+        :param monitor: Socket
+        """
+        monitor.register_tube(tube)
+        monitor.node = self
+        self.__monitors.add(monitor)
+        self.logger.info(f"The tube '{tube.name}' was registered to "
+                         f"the monitor: {monitor.addr}")
 
     def get_tube_by_topic(self, topic: str, types=None) -> Tube:
         """
@@ -639,6 +774,9 @@ class TubeNode:
             if tube.tube_type in [zmq.SUB, zmq.REP, zmq.ROUTER, zmq.DEALER]:
                 poller.register(tube.raw_socket, zmq.POLLIN)
                 run_this_thread = True
+        for monitor in self.__monitors:
+            poller.register(monitor.raw_socket, zmq.POLLIN)
+            run_this_thread = True
         if not run_this_thread:
             self.logger.debug("The main loop is disabled, "
                               "There is not registered any supported tube.")
@@ -649,6 +787,10 @@ class TubeNode:
             # print(events)
             for event in events:
                 raw_socket = event[0]
+                if 'monitor' in raw_socket.__dict__:
+                    monitor = raw_socket.__dict__['monitor']
+                    await monitor.process()
+                    continue
                 tube: Tube = raw_socket.__dict__['tube']
                 request = await tube.receive_data(raw_socket=raw_socket)
                 callbacks = self.get_callback_by_topic(request.topic, tube)
