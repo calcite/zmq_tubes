@@ -498,9 +498,11 @@ class TubeMonitor:
         self.raw_socket = self.context.socket(zmq.PAIR)
         self.raw_socket.bind(self.addr)
         self.raw_socket.__dict__['monitor'] = self
+        self.raw_socket.send(b'__connect__')
 
     def close(self):
         if self.raw_socket:
+            self.raw_socket.send(b'__disconnect__')
             self.raw_socket.close()
             self.raw_socket = None
         self.enabled = False
@@ -522,15 +524,16 @@ class TubeMonitor:
         return res
 
     def __process_cmd(self, raw_data):
-        if raw_data == b'enabled':
+        if raw_data == b'__enabled__':
             self.enabled = True
             self._time = time.time()
-        elif raw_data == b'disabled':
+        elif raw_data == b'__disabled__':
             self.enabled = False
-        elif raw_data == b'get_schema':
+        elif raw_data == b'__get_schema__':
             schema = [self.__format_tubes_info(t) for t in self.__tubes]
             schema = {'tubes': schema}
-            self.raw_socket.send(json.dumps(schema).encode())
+            self.raw_socket.send_multipart([b'__schema__',
+                                            json.dumps(schema).encode()])
 
     async def process(self):
         if self.raw_socket:

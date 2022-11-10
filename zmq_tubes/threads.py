@@ -1,5 +1,3 @@
-import json
-
 from threading import Thread, Lock, Event, current_thread
 import zmq
 from zmq import Poller, Context
@@ -23,7 +21,7 @@ class StoppableThread(Thread):
 
     def stop(self):
         self.stop_event.set()
-        self.join(timeout=10)
+        self.join(timeout=1)
 
 
 class TubeMonitor(AsyncTubeMonitor):
@@ -281,7 +279,11 @@ class TubeNode(AsyncTubeNode):
             self.logger.info("The main process was started.")
             cur_thread = current_thread()
             while not cur_thread.is_stopped():
-                events = poller.poll(timeout=100)
+                try:
+                    events = poller.poll(timeout=100)
+                except zmq.error.ZMQError:
+                    # This happens during shutdown
+                    continue
                 for event in events:
                     # self.logger.debug(f"New event {event}")
                     raw_socket = event[0]
@@ -314,7 +316,8 @@ class TubeNode(AsyncTubeNode):
                             f"The tube '{tube.name}' waits more then "
                             f"3s for access to socket.")
             self.logger.info("The main process was ended.")
-
-        self.__main_thread = StoppableThread(target=_main_loop, name='zmq/main')
-        self.__main_thread.start()
+        if not self.__main_thread:
+            self.__main_thread = StoppableThread(target=_main_loop,
+                                                 name='zmq/main')
+            self.__main_thread.start()
         return self.__main_thread
