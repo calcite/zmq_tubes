@@ -14,12 +14,12 @@ from zmq.asyncio import Poller, Context, Socket
 from zmq_tubes.matcher import TopicMatcher
 
 
-class TubeException(Exception): pass            # flake8: E701
+class TubeException(Exception): pass                # flake8: E701
 class TubeTopicNotConfigured(TubeException): pass   # flake8: E701
 class TubeMessageError(TubeException): pass         # flake8: E701
 class TubeMessageTimeout(TubeException): pass       # flake8: E701
 class TubeMethodNotSupported(TubeException): pass   # flake8: E701
-class TubeConnectionError(TubeException): pass   # flake8: E701
+class TubeConnectionError(TubeException): pass      # flake8: E701
 
 
 LESS38 = sys.version_info < (3, 8)
@@ -524,6 +524,7 @@ class TubeMonitor:
         return res
 
     def __process_cmd(self, raw_data):
+        self.logger.debug(f"Incoming monitoring command {raw_data}")
         if raw_data == b'__enabled__':
             self.enabled = True
             self._time = time.time()
@@ -544,7 +545,7 @@ class TubeMonitor:
         delta_time = str(now - self._time).encode()
         self._time = now
         return [delta_time, msg.tube.name.encode(), direct.encode()] + \
-               msg.format_message()[-2:]
+            msg.format_message()[-2:]
 
     def send_message(self, msg: TubeMessage):
         if self.raw_socket and self.enabled:
