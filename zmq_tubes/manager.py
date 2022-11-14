@@ -498,11 +498,20 @@ class TubeMonitor:
         self.raw_socket = self.context.socket(zmq.PAIR)
         self.raw_socket.bind(self.addr)
         self.raw_socket.__dict__['monitor'] = self
-        self.raw_socket.send(b'__connect__')
+        try:
+            self.raw_socket.send(b'__connect__', flags=zmq.NOBLOCK)
+        except zmq.ZMQError:
+            # The monitor is not connected
+            pass
 
     def close(self):
         if self.raw_socket:
-            self.raw_socket.send(b'__disconnect__')
+            try:
+                self.raw_socket.send(b'__disconnect__', flags=zmq.NOBLOCK)
+                time.sleep(.1)
+            except zmq.ZMQError:
+                # The monitor is not connected
+                pass
             self.raw_socket.close()
             self.raw_socket = None
         self.enabled = False

@@ -186,7 +186,7 @@ class TubeNode(AsyncTubeNode):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.__main_thread = None
+        self.main_thread = None
         self.max_workers = None
 
     def __enter__(self):
@@ -208,8 +208,8 @@ class TubeNode(AsyncTubeNode):
         return res
 
     def stop(self):
-        if self.__main_thread:
-            self.__main_thread.stop()
+        if self.main_thread:
+            self.main_thread.stop()
 
     def start(self):
         def _callback_wrapper(_callback, _request: TubeMessage):
@@ -313,8 +313,9 @@ class TubeNode(AsyncTubeNode):
                                 f"The tube '{tube.name}' waits more then "
                                 f"3s for access to socket.")
             self.logger.info("The main process was ended.")
-        if not self.__main_thread:
-            self.__main_thread = StoppableThread(target=_main_loop,
+
+        if not self.main_thread:
+            self.main_thread = StoppableThread(target=_main_loop,
                                                  name='zmq/main')
-            self.__main_thread.start()
-        return self.__main_thread
+            self.main_thread.start()
+        return self.main_thread
