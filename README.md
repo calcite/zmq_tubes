@@ -13,6 +13,7 @@ The whole system is hierarchical, based on topics
   Some types of tubes require a response in this format.
 - **Tube** - This class wraps a ZMQ socket. 
   It represents a connection between client and server.
+- **TubeMonitor** - The class can sniff of the ZMQTube communication.
 - **TubeNode** - This represents an application interface for communication via tubes.
 
 
@@ -34,20 +35,23 @@ We can define all tubes for one TubeNode by yml file.
 # test.yml
 tubes:
   - name: Client REQ
-    addr:  ipc:///tmp/req.pipe      
+    addr:  ipc:///tmp/req.pipe
+    monitor: ipc:///tmp/test.monitor    # This is optional
     tube_type: REQ
     topics:
       - foo/#
       - +/bar
   
   - name: Client PUB
-    addr:  ipc:///tmp/pub.pipe      
+    addr:  ipc:///tmp/pub.pipe
+    monitor: ipc:///tmp/test.monitor    # This is optional
     tube_type: PUB
     topics:
       - foo/pub/#
 
   - name: Server ROUTER
-    addr:  ipc:///tmp/router.pipe      
+    addr:  ipc:///tmp/router.pipe
+    monitor: ipc:///tmp/test.monitor    # This is optional
     tube_type: ROUTER
     server: yes
     sockopts:
@@ -411,3 +415,6 @@ node.register_handler('test/#', handler)
 node.send('test/xxx', 'message from client')
 # output: 'message from server'
 ```
+
+
+## Debugging

@@ -1,3 +1,5 @@
+import time
+
 import concurrent
 from threading import Thread, Lock, Event, current_thread
 import zmq
@@ -298,7 +300,7 @@ class TubeNode(AsyncTubeNode):
                                 executor.submit(monitor.process)
                             except Exception as ex:
                                 self.logger.error(
-                                    "The monitor process error.",
+                                    "The monitor event process failed.",
                                     exc_info=ex)
                             finally:
                                 continue
@@ -316,6 +318,7 @@ class TubeNode(AsyncTubeNode):
 
         if not self.main_thread:
             self.main_thread = StoppableThread(target=_main_loop,
-                                                 name='zmq/main')
+                                               name='zmq/main')
             self.main_thread.start()
+            time.sleep(.2)  # wait for main thread is ready
         return self.main_thread

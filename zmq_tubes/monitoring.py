@@ -26,8 +26,15 @@ def get_socket(addr: str):
     return socket
 
 
-def logs(args):
-    socket = get_socket(args.socket)
+def logs(addr, dump_file, notime, print_stdout=True):
+    """
+    Log ZMQ communication
+    :param addr:  address of monitor socket
+    :param dump_file: file descriptor of file for same ZMQMessages
+    :param notime: bool: disable printing of relative time (default is False)
+    :param print_stdout bool: print ZMQMessages to stdout
+    """
+    socket = get_socket(addr)
     socket.send(b'__enabled__')
     while True:
         if socket.poll(zmq.POLLIN):
@@ -38,17 +45,21 @@ def logs(args):
                     continue
                 elif data[0] == b'__disconnect__':
                     break
-                if args.dump:
-                    args.dump.write(b' '.join(data) + b'\n')
-                if args.notime:
-                    data.pop(0)
-                print(' '.join([m.decode('utf-8', 'backslashreplace')
-                                for m in data]))
-        # time.sleep(.01)
+                if dump_file:
+                    dump_file.write(b' '.join(data) + b'\n')
+                if print_stdout:
+                    data = [m.decode('utf-8', 'backslashreplace') for m in data]
+                    if notime:
+                        data.pop(0)
+                    print(' '.join(data))
 
 
-def get_schema(args):
-    socket = get_socket(args.socket)
+def get_schema(addr):
+    """
+    Get ZMQTube schema from connected application
+    :param addr: address of monitor socket
+    """
+    socket = get_socket(addr)
     socket.send(b'__get_schema__')
     for _ in range(10):
         data = socket.recv_multipart()
@@ -77,9 +88,7 @@ def simulate_send(node: TubeNode, line, speed):
         return
     msg = msg.split(' ', 1)
     topic = msg.pop(0)
-    data = ''
-    if msg:
-        data = json.loads(msg.pop(0))
+    data = msg.pop(0)
     tube = node.get_tube_by_name(tube_name)
     if not tube:
         sys.stderr.write(f'The tube {tube_name} does not exist.\n')
@@ -87,28 +96,33 @@ def simulate_send(node: TubeNode, line, speed):
     if speed:
         simulate_speed(float(rtime), speed)
     if tube.tube_type == zmq.REQ:
-        msg = tube.request(topic, data, timeout=-1)
-        last_result = b' '.join(msg.format_message()[-2:]).decode()
+        res = tube.request(topic, data, timeout=-1)
+        last_result = b' '.join(res.format_message()[-2:]).decode()
     else:
         tube.send(topic, data)
 
 
-def simulate(args):
-    schema = yaml.safe_load(args.schema)
+def simulate(schema_yaml, dump_file, speed):
+    """
+    Simulate ZMQ communication
+    :param schema_yaml: the file descriptor of simulator definition
+    :param dump_file: the file descriptor of ZMQTube dump communication
+    :param speed: float - speed of playback 0 - no blocking, 1 - real time
+    """
+    schema = yaml.safe_load(schema_yaml)
     node = TubeNode()
     for tube_info in schema['tubes']:
         if 'monitor' in tube_info:
             del tube_info['monitor']
         tube = Tube(**tube_info)
         node.register_tube(tube, ['#'])
-    node.get_tube_by_name('DISPLAY_SUB_PUB').send('display/bind',
-                                                  {"name": "cmd"})
+
     with node:
         while True:
-            line = args.dump.readline()
+            line = dump_file.readline()
             if not line:
                 break
-            simulate_send(node, line, args.speed)
+            simulate_send(node, line, speed)
 
 
 def main():
@@ -134,7 +148,8 @@ def main():
                              help='Does not show relative time')
     parser_logs.add_argument('-d', '--dump', type=argparse.FileType('wb'),
                              help='Output dump file')
-    parser_logs.set_defaults(func=lambda args: logs(args))
+    parser_logs.set_defaults(func=lambda args: logs(args.socket, args.dump,
+                                                    args.noatime))
 
     # Simulate
     parser_sim = subparsers.add_parser('simulate',
@@ -146,7 +161,8 @@ def main():
     parser_sim.add_argument('-s', '--speed', type=float, default=1,
                             help='Speed of simulation. 0 - no wait, '
                                  '1 - real speed (default)')
-    parser_sim.set_defaults(func=lambda args: simulate(args))
+    parser_sim.set_defaults(func=lambda args: simulate(args.schema, args.dump,
+                                                       args.speed))
 
     args = parser.parse_args()
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO)
