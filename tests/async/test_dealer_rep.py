@@ -53,8 +53,8 @@ def resp_node1(data, request):
     )
 
     node = TubeNode()
-    node.register_tube(tube, f"{TOPIC}/#")
-    node.register_handler(f"{TOPIC}/#", __process, tube)
+    node.register_tube(tube, f"{TOPIC}/A")
+    node.register_handler(f"{TOPIC}/A", __process, tube)
     return node
 
 
@@ -73,8 +73,8 @@ def resp_node2(data2, request):
     )
 
     node = TubeNode()
-    node.register_tube(tube, f"{TOPIC}/#")
-    node.register_handler(f"{TOPIC}/#", __process, tube)
+    node.register_tube(tube, f"{TOPIC}/B")
+    node.register_handler(f"{TOPIC}/B", __process, tube)
     return node
 
 
@@ -88,11 +88,16 @@ async def test_dealer_reps(dealer_node, resp_node1, resp_node2, data, data2):
     dealer_node.register_handler(f"{TOPIC}/#", __process)
 
     with dealer_node, resp_node1, resp_node2:
+        _d1 = data.copy()
+        _d2 = data2.copy()
         for _ in range(len(data)):
-            dealer_node.send(f"{TOPIC}/A", data[0])
-            dealer_node.send(f"{TOPIC}/A", data2[0])
-            await asyncio.sleep(.2)
-        await asyncio.sleep(1.2)
+            dealer_node.send(f"{TOPIC}/A", _d1.pop())
+            dealer_node.send(f"{TOPIC}/B", _d2.pop())
+        for _ in range(200):
+            # We have to wait, before close nodes.
+            if len(res) == 4:
+                break
+            await asyncio.sleep(0.1)
 
     assert len(res) == 4
     assert len(data) == 0

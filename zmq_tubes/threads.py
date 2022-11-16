@@ -1,10 +1,13 @@
+import time
+
+import concurrent
 from threading import Thread, Lock, Event, current_thread
 import zmq
 from zmq import Poller, Context
 
 from .manager import TubeMessage, Tube as AsyncTube, TubeNode as AsyncTubeNode,\
     TubeMethodNotSupported, TubeMessageError, TubeMessageTimeout, \
-    TubeTopicNotConfigured, TubeConnectionError
+    TubeMonitor as AsyncTubeMonitor, TubeTopicNotConfigured, TubeConnectionError
 
 
 class TubeThreadDeadLock(Exception): pass
@@ -21,7 +24,34 @@ class StoppableThread(Thread):
 
     def stop(self):
         self.stop_event.set()
-        self.join(timeout=10)
+        self.join(timeout=1)
+
+
+class TubeMonitor(AsyncTubeMonitor):
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Because singleton execute __init__ for each try.
+        if hasattr(self, 'lock') and self.lock:
+            return
+        self.context = Context.instance()
+        self.lock = Lock()
+
+    def process(self):
+        if self.raw_socket:
+            self.__process_cmd(self.raw_socket.recv())
+
+    def send_message(self, msg: TubeMessage):
+        if self.raw_socket and self.enabled:
+            row_msg = self.__format_message(msg, '>')
+            with self.lock:
+                self.raw_socket.send_multipart(row_msg)
+
+    def receive_message(self, msg: TubeMessage):
+        if self.raw_socket and self.enabled:
+            row_msg = self.__format_message(msg, '<')
+            with self.lock:
+                self.raw_socket.send_multipart(row_msg)
 
 
 class Tube(AsyncTube):
@@ -44,6 +74,14 @@ class Tube(AsyncTube):
             raise TubeThreadDeadLock()
         try:
             message.raw_socket.send_multipart(raw_msg)
+            try:
+                if self.monitor:
+                    self.monitor.send_message(message)
+            except Exception as ex:
+                self.logger.error(
+                    "The error with sending of an outgoing message "
+                    "to the monitor tube.",
+                    exc_info=ex)
         except (TypeError, zmq.ZMQError) as ex:
             raise TubeMessageError(
                 f"The message '{message}' does not be sent.") from ex
@@ -134,15 +172,24 @@ class Tube(AsyncTube):
             f"Received (tube {self.name}): {raw_data}")
         message = TubeMessage(tube=self, raw_socket=raw_socket)
         message.parse(raw_data)
+        try:
+            if self.monitor:
+                self.monitor.receive_message(message)
+        except Exception as ex:
+            self.logger.error("The error with sending of an incoming message "
+                              "to the monitor tube.",
+                              exc_info=ex)
         return message
 
 
 class TubeNode(AsyncTubeNode):
     __TUBE_CLASS = Tube
+    __MONITOR_CLASS = TubeMonitor
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.__main_thread = None
+        self.main_thread = None
+        self.max_workers = None
 
     def __enter__(self):
         self.connect()
@@ -163,8 +210,8 @@ class TubeNode(AsyncTubeNode):
         return res
 
     def stop(self):
-        if self.__main_thread:
-            self.__main_thread.stop()
+        if self.main_thread:
+            self.main_thread.stop()
 
     def start(self):
         def _callback_wrapper(_callback, _request: TubeMessage):
@@ -226,33 +273,51 @@ class TubeNode(AsyncTubeNode):
                 if tube.tube_type in [zmq.SUB, zmq.REP, zmq.ROUTER, zmq.DEALER]:
                     poller.register(tube.raw_socket, zmq.POLLIN)
                     run_this_thread = True
+            for monitor in self.__monitors:
+                poller.register(monitor.raw_socket, zmq.POLLIN)
+                run_this_thread = True
             if not run_this_thread:
                 self.logger.debug("The main process is disabled, "
                                   "There is not registered any supported tube.")
                 return
             self.logger.info("The main process was started.")
             cur_thread = current_thread()
-            while not cur_thread.is_stopped():
-                events = poller.poll(timeout=100)
-                for event in events:
-                    # self.logger.debug(f"New event {event}")
-                    raw_socket = event[0]
-                    tube: Tube = raw_socket.__dict__['tube']
+            with concurrent.futures.ThreadPoolExecutor(
+                    max_workers=self.max_workers,
+                    thread_name_prefix='zmq/worker/') as executor:
+                while not cur_thread.is_stopped():
                     try:
-                        request = tube.receive_data(
-                            raw_socket=raw_socket
-                        )
-                        Thread(
-                            target=_one_event,
-                            args=(request, ),
-                            name=f"zmq/worker/{tube.name}"
-                        ).start()
-                    except TubeThreadDeadLock:
-                        self.logger.error(
-                            f"The tube '{tube.name}' waits more then "
-                            f"3s for access to socket.")
+                        events = poller.poll(timeout=100)
+                    except zmq.error.ZMQError:
+                        # This happens during shutdown
+                        continue
+                    for event in events:
+                        # self.logger.debug(f"New event {event}")
+                        raw_socket = event[0]
+                        if 'monitor' in raw_socket.__dict__:
+                            try:
+                                monitor = raw_socket.__dict__['monitor']
+                                executor.submit(monitor.process)
+                            except Exception as ex:
+                                self.logger.error(
+                                    "The monitor event process failed.",
+                                    exc_info=ex)
+                            continue
+                        tube: Tube = raw_socket.__dict__['tube']
+                        try:
+                            request = tube.receive_data(
+                                raw_socket=raw_socket
+                            )
+                            executor.submit(_one_event, request)
+                        except TubeThreadDeadLock:
+                            self.logger.error(
+                                f"The tube '{tube.name}' waits more then "
+                                f"3s for access to socket.")
             self.logger.info("The main process was ended.")
 
-        self.__main_thread = StoppableThread(target=_main_loop, name='zmq/main')
-        self.__main_thread.start()
-        return self.__main_thread
+        if not self.main_thread:
+            self.main_thread = StoppableThread(target=_main_loop,
+                                               name='zmq/main')
+            self.main_thread.start()
+            time.sleep(.2)  # wait for main thread is ready
+        return self.main_thread
