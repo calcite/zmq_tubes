@@ -88,7 +88,7 @@ def simulate_send(node: TubeNode, line, speed):
         return
     msg = msg.split(' ', 1)
     topic = msg.pop(0)
-    data = msg.pop(0)
+    data = msg.pop(0) if msg else ''
     tube = node.get_tube_by_name(tube_name)
     if not tube:
         sys.stderr.write(f'The tube {tube_name} does not exist.\n')
@@ -134,22 +134,20 @@ def main():
     # Schema
     parser_schema = subparsers.add_parser('get_schema',
                                           help='Get tubeNode schema')
-    parser_schema.add_argument('-s', '--socket', help='Path to monitor socket.',
-                               required=True)
+    parser_schema.add_argument('socket', help='Path to monitor socket.')
     parser_schema.set_defaults(
-        func=lambda args: print(yaml.dump(get_schema(args)))
+        func=lambda args: print(yaml.dump(get_schema(args.socket)))
     )
     # Logs
     parser_logs = subparsers.add_parser('logs',
                                         help='Logs tubeNode communication.')
-    parser_logs.add_argument('-s', '--socket', help='Path to monitor socket.',
-                             required=True)
+    parser_logs.add_argument('socket', help='Path to monitor socket.')
     parser_logs.add_argument('--notime', action='store_true',
                              help='Does not show relative time')
     parser_logs.add_argument('-d', '--dump', type=argparse.FileType('wb'),
                              help='Output dump file')
     parser_logs.set_defaults(func=lambda args: logs(args.socket, args.dump,
-                                                    args.noatime))
+                                                    args.notime))
 
     # Simulate
     parser_sim = subparsers.add_parser('simulate',
