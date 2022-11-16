@@ -302,8 +302,7 @@ class TubeNode(AsyncTubeNode):
                                 self.logger.error(
                                     "The monitor event process failed.",
                                     exc_info=ex)
-                            finally:
-                                continue
+                            continue
                         tube: Tube = raw_socket.__dict__['tube']
                         try:
                             request = tube.receive_data(
