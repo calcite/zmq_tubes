@@ -35,23 +35,20 @@ We can define all tubes for one TubeNode by yml file.
 # test.yml
 tubes:
   - name: Client REQ
-    addr:  ipc:///tmp/req.pipe
-    monitor: ipc:///tmp/test.monitor    # This is optional
+    addr:  ipc:///tmp/req.pipe    
     tube_type: REQ
     topics:
       - foo/#
       - +/bar
   
   - name: Client PUB
-    addr:  ipc:///tmp/pub.pipe
-    monitor: ipc:///tmp/test.monitor    # This is optional
+    addr:  ipc:///tmp/pub.pipe    
     tube_type: PUB
     topics:
       - foo/pub/#
 
   - name: Server ROUTER
-    addr:  ipc:///tmp/router.pipe
-    monitor: ipc:///tmp/test.monitor    # This is optional
+    addr:  ipc:///tmp/router.pipe    
     tube_type: ROUTER
     server: yes
     sockopts:
@@ -417,4 +414,116 @@ node.send('test/xxx', 'message from client')
 ```
 
 
-## Debugging
+## Debugging / Monitoring
+We can assign monitor socket to our zmq tubes. By this monitor socket, we can sniff zmq communication or get zmq tube
+parameters. 
+```yaml
+tubes:
+  - name: ServerRouter
+    addr:  ipc:///tmp/router.pipe
+    monitor: ipc:///tmp/test.monitor 
+    tube_type: ROUTER
+    server: yes    
+    topics:
+      - foo/#       
+```
+This is example of yaml definition. We can use the same monitor socket for more tubes in the same tubeNode.
+When we add monitor attribute to our tube definition, the application automatically create new socket monitor: 
+`/tmp/test.monitor`. Your application is server side. The logs are sent to socket only for the time, when monitoring
+tool is running.
+
+### Monitoring tool
+After enable monitoring in application tube, we can use monitoring tool. 
+
+```shell
+# get server tube configuration
+> zmqtube-monitor get_schema ipc:///tmp/display.monitor
+    tubes:
+      - addr: ipc:///tmp/router.pipe
+        monitor: ipc:///tmp/test.monitor 
+        name: ServerRouter
+        server: 'yes'
+        tube_type: ROUTER
+
+# log tube communication. The logs will be saved to dump.rec as well. 
+> zmqtube-monitor logs -d ./dump.rec ipc:///tmp/display.monitor
+ 0.28026580810546875 ServerRouter < foo/test Request
+ 0.0901789665222168 ServerRouter > foo/test Response
+
+# The format of output
+# <relative time> <tube name> <direction> <topic> <message>` 
+```
+
+### Simulation of the client side
+When we have a dump file (e.g. `dump.rec`), we can simulate communication with our app.
+The first step is prepare the mock client schema file. 
+We can dump the tube node configuration from our application and after that edit it. 
+```shell
+> zmqtube-monitor get_schema ipc:///tmp/display.monitor > mock_schema.yaml
+> vim mock_schema.yaml
+...   
+# Now, we update the file mock_schema.yaml. We change configuration to 
+# the mock client configuration. The name of the tubes must be the same 
+# as server original. We can remove monitoring attribute and 
+# change server and tube_type attribute. In this mock file, 
+# the topics are not required, because they are ignored. 
+
+> cat mock_schema.yaml
+tubes:
+- addr: ipc:///tmp/router.pipe
+  name: ServerRouter
+  tube_type: REQ
+```
+
+Now, we can start simulation of client communication.
+```shell
+> zmqtube-monitor simulate mock_schema.yaml dump.rec
+```
+If the response of our app is not the same as we expect (the response saved in dump file). 
+The monitoring tool warns us.  We can modify speed of the simulation by the parameter `--speed`.
+
+In default configuration, is simulation run the same
+speed as original communication (parameter `--speed=1`). 
+
+| Speed | description |
+| :-: | :- |
+| 0 | no blocking simulation |
+| 0.5 | twice faster than original |
+| 1 | original speed |
+| 2 | twice slower than original |
+
+
+### Example of programming declaration of the monitoring.
+```python
+import zmq
+from zmq_tubes.threads import Tube, TubeNode, TubeMessage, TubeMonitor
+
+
+def handler(request: TubeMessage):
+  print(request.payload)
+  return request.create_response('response')
+
+resp_tube = Tube(
+  name='REP',
+  addr='ipc:///tmp/rep.pipe',
+  server='yes',
+  tube_type=zmq.REP
+)
+
+req_tube = Tube(
+  name='REQ',
+  addr='ipc:///tmp/rep.pipe',  
+  tube_type=zmq.REQ
+)
+
+node = TubeNode()
+node.register_tube(resp_tube, f"foo/#")
+node.register_tube(req_tube, f"foo/#")
+node.register_handler(f"foo/#", handler)
+
+node.register_monitor(resp_tube, TubeMonitor(addr='ipc:///tmp/test.monitor'))
+  
+with node:
+    print(node.request('foo/xxx', 'message 2'))
+
+```
