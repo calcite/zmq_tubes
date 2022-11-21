@@ -415,8 +415,8 @@ node.send('test/xxx', 'message from client')
 
 
 ## Debugging / Monitoring
-We can assign monitor socket to our zmq tubes. By this monitor socket, we can sniff zmq communication or get zmq tube
-parameters. 
+We can assign a monitor socket to our zmq tubes. By this monitor socket, we can sniff zmq communication or get a zmq tube
+configuration. 
 ```yaml
 tubes:
   - name: ServerRouter
@@ -427,16 +427,17 @@ tubes:
     topics:
       - foo/#       
 ```
-This is example of yaml definition. We can use the same monitor socket for more tubes in the same tubeNode.
-When we add monitor attribute to our tube definition, the application automatically create new socket monitor: 
-`/tmp/test.monitor`. Your application is server side. The logs are sent to socket only for the time, when monitoring
+This is example of a yaml definition. We can use the same monitor socket for more tubes in the same tubeNode.
+When we add the monitor attribute to our tube definition, the application automatically create a new socket monitor: 
+`/tmp/test.monitor`. Your application works as a server side. The logs are sent to the socket only for the time, when the monitoring
 tool is running.
 
 ### Monitoring tool
-After enable monitoring in application tube, we can use monitoring tool. 
+
+After enabling of the monitoring in the application, we can use the monitoring tool for sniff. 
 
 ```shell
-# get server tube configuration
+# get the server tube configuration
 > zmqtube-monitor get_schema ipc:///tmp/display.monitor
     tubes:
       - addr: ipc:///tmp/router.pipe
@@ -445,7 +446,7 @@ After enable monitoring in application tube, we can use monitoring tool.
         server: 'yes'
         tube_type: ROUTER
 
-# log tube communication. The logs will be saved to dump.rec as well. 
+# the log tube communication. Logs will be saved to dump.rec as well. 
 > zmqtube-monitor logs -d ./dump.rec ipc:///tmp/display.monitor
  0.28026580810546875 ServerRouter < foo/test Request
  0.0901789665222168 ServerRouter > foo/test Response
@@ -455,18 +456,19 @@ After enable monitoring in application tube, we can use monitoring tool.
 ```
 
 ### Simulation of the client side
-When we have a dump file (e.g. `dump.rec`), we can simulate communication with our app.
-The first step is prepare the mock client schema file. 
-We can dump the tube node configuration from our application and after that edit it. 
+When we have a dump file (e.g. `dump.rec`), we can simulate the communication with our app.
+The first step is prepare the mock client schema file.
+For this, We can get the tube node configuration from our application and after that edit it. 
 ```shell
 > zmqtube-monitor get_schema ipc:///tmp/display.monitor > mock_schema.yaml
 > vim mock_schema.yaml
 ...   
-# Now, we update the file mock_schema.yaml. We change configuration to 
-# the mock client configuration. The name of the tubes must be the same 
-# as server original. We can remove monitoring attribute and 
-# change server and tube_type attribute. In this mock file, 
-# the topics are not required, because they are ignored. 
+# Now, we have to update the file mock_schema.yaml. 
+# We change configuration to the mock client configuration. 
+# The names of the tubes must be the same as are in your app. 
+# We can remove monitoring attribute and change server and 
+# tube_type attributes. In this mock file, the topics are not 
+# required, they are ignored. 
 
 > cat mock_schema.yaml
 tubes:
@@ -475,14 +477,15 @@ tubes:
   tube_type: REQ
 ```
 
-Now, we can start simulation of client communication.
+Now, we can start the simulation of the client communication.
 ```shell
 > zmqtube-monitor simulate mock_schema.yaml dump.rec
 ```
-If the response of our app is not the same as we expect (the response saved in dump file). 
-The monitoring tool warns us.  We can modify speed of the simulation by the parameter `--speed`.
+If the response of our app is not the same as tool expects (the response saved in dump file), then 
+the monitoring tool warns us.  
+We can modify speed of the simulation by the parameter `--speed`.
 
-In default configuration, is simulation run the same
+In the default configuration, is  the simulation run the same
 speed as original communication (parameter `--speed=1`). 
 
 | Speed | description |

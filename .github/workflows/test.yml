@@ -7,7 +7,7 @@ on:
       - '**.py'
       - '**.yml'
     branches:
-      - '**'
+      - master
   pull_request:
     paths:
       - '**.py'
