@@ -151,7 +151,7 @@ class Tube(AsyncTube):
                 self.logger.error("The request timout")
         finally:
             if not self.is_persistent:
-                self.logger.debug(f"Close tube {self.name}")
+                # self.logger.debug(f"Close tube {self.name}")
                 if request.raw_socket and not request.raw_socket.closed:
                     request.raw_socket.close(1000)
         if self.is_closed:
