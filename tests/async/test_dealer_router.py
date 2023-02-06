@@ -65,9 +65,9 @@ async def test_router_dealer(router_node, dealer_node1, data):
 
     dealer_node1.register_handler(f"{TOPIC}/#", __process)
 
-    with router_node, dealer_node1:
+    async with router_node, dealer_node1:
         for _ in range(len(data)):
-            dealer_node1.send(f"{TOPIC}/A", data[0])
+            await dealer_node1.send(f"{TOPIC}/A", data[0])
             await asyncio.sleep(.1)
 
     assert len(res) == 4
@@ -90,9 +90,9 @@ async def test_router_dealer_on_same_node(router_node, data):
     router_node.register_tube(tube, f"{TOPIC}/#")
     router_node.register_handler(f"{TOPIC}/#", __process, tube)
 
-    with router_node:
+    async with router_node:
         for _ in range(len(data)):
-            router_node.send(f"{TOPIC}/A", data[0], tube)
+            await router_node.send(f"{TOPIC}/A", data[0], tube)
             await asyncio.sleep(.1)
 
     assert len(res) == 4

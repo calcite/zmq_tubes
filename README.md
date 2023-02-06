@@ -73,8 +73,8 @@ async def run():
     schema = yaml.safe_load(fd)
   node = TubeNode(schema=schema)
   node.register_handler('server/#', handler)
-  with node:
-      node.publish('foo/pub/test', 'message 1')
+  async with node:
+      await node.publish('foo/pub/test', 'message 1')
       print(await node.request('foo/xxx', 'message 2'))
 
 asyncio.run(run())
@@ -291,7 +291,7 @@ node = TubeNode()
 node.register_tube(tube, 'test/#')
 node.register_handler('test/#', handler)
 
-node.send('test/xxx', 'message')
+await node.send('test/xxx', 'message')
 
 # output: 'response'
 ```
@@ -351,8 +351,8 @@ node = TubeNode()
 node.register_tube(tube, 'test/#')
 node.register_handler('test/#', handler)
 
-node.send('test/xxx', 'wait')
-node.send('test/xxx', 'message')
+await node.send('test/xxx', 'wait')
+await node.send('test/xxx', 'message')
 
 # output: 'message'
 # output: 'wait'
@@ -385,7 +385,7 @@ node = TubeNode()
 node.register_tube(tube, 'test/#')
 node.register_handler('test/#', handler)
 
-node.send('test/xxx', 'message from server')
+await node.send('test/xxx', 'message from server')
 # output: 'message from client'
 ```
 
@@ -409,7 +409,7 @@ node = TubeNode()
 node.register_tube(tube, 'test/#')
 node.register_handler('test/#', handler)
 
-node.send('test/xxx', 'message from client')
+await node.send('test/xxx', 'message from client')
 # output: 'message from server'
 ```
 

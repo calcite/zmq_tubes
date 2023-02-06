@@ -318,20 +318,20 @@ class Tube:
             self.raw_socket.close()
         self.is_closed = True
 
-    def send(self, *args, **kwargs):
+    async def send(self, *args, **kwargs):
         if args:
             if isinstance(args[0], TubeMessage):
-                return self.__send_message(*args, **kwargs)
+                return await self.__send_message(*args, **kwargs)
             elif isinstance(args[0], str):
-                return self.__send_payload(*args, **kwargs)
+                return await self.__send_payload(*args, **kwargs)
         elif kwargs:
             if 'message' in kwargs:
-                return self.__send_message(**kwargs)
+                return await self.__send_message(**kwargs)
             elif 'topic' in kwargs:
-                return self.__send_payload(**kwargs)
+                return await self.__send_payload(**kwargs)
         raise NotImplementedError("Unknown type of topic")
 
-    def __send_payload(self, topic: str, payload=None, raw_socket=None):
+    async def __send_payload(self, topic: str, payload=None, raw_socket=None):
         """
         Send payload to topic.
         :param topic - topic
@@ -344,9 +344,9 @@ class Tube:
             topic=topic,
             raw_socket=raw_socket if raw_socket else self.raw_socket
         )
-        self.__send_message(message)
+        await self.__send_message(message)
 
-    def __send_message(self, message: TubeMessage):
+    async def __send_message(self, message: TubeMessage):
         """
         Send message.
         :param message - TubeMessage
@@ -357,10 +357,10 @@ class Tube:
             raise TubeConnectionError(
                 f'The tube {message.tube.name} is already closed.')
         try:
-            message.raw_socket.send_multipart(raw_msg)
+            await message.raw_socket.send_multipart(raw_msg)
             try:
                 if self.monitor:
-                    self.monitor.send_message(message)
+                    await self.monitor.send_message(message)
             except Exception as ex:
                 self.logger.error(
                     "The error with sending of an outgoing message "
@@ -423,7 +423,7 @@ class Tube:
                 f"can request topic."
             )
         try:
-            self.send(request)
+            await self.send(request)
             if post_send_callback:
                 if asyncio.iscoroutinefunction(post_send_callback):
                     await post_send_callback(request)
@@ -459,7 +459,7 @@ class Tube:
         message.parse(raw_data)
         try:
             if self.monitor:
-                self.monitor.receive_message(message)
+                await self.monitor.receive_message(message)
         except Exception as ex:
             self.logger.error("The error with sending of an incoming message "
                               "to the monitor tube.",
@@ -494,21 +494,21 @@ class TubeMonitor:
         self.__tubes.add(tube)
         tube.monitor = self
 
-    def connect(self):
+    async def connect(self):
         self.raw_socket = self.context.socket(zmq.PAIR)
         self.raw_socket.bind(self.addr)
         self.raw_socket.__dict__['monitor'] = self
         try:
-            self.raw_socket.send(b'__connect__', flags=zmq.NOBLOCK)
+            await self.raw_socket.send(b'__connect__', flags=zmq.NOBLOCK)
         except zmq.ZMQError:
             # The monitor is not connected
             pass
 
-    def close(self):
+    async def close(self):
         if self.raw_socket:
             try:
-                self.raw_socket.send(b'__disconnect__', flags=zmq.NOBLOCK)
-                time.sleep(.1)
+                await self.raw_socket.send(b'__disconnect__', flags=zmq.NOBLOCK)
+                await asyncio.sleep(.1)
             except zmq.ZMQError:
                 # The monitor is not connected
                 pass
@@ -556,15 +556,15 @@ class TubeMonitor:
         return [delta_time, msg.tube.name.encode(), direct.encode()] + \
             msg.format_message()[-2:]
 
-    def send_message(self, msg: TubeMessage):
+    async def send_message(self, msg: TubeMessage):
         if self.raw_socket and self.enabled:
             row_msg = self.__format_message(msg, '>')
-            self.raw_socket.send_multipart(row_msg)
+            await self.raw_socket.send_multipart(row_msg)
 
-    def receive_message(self, msg: TubeMessage):
+    async def receive_message(self, msg: TubeMessage):
         if self.raw_socket and self.enabled:
             row_msg = self.__format_message(msg, '<')
-            self.raw_socket.send_multipart(row_msg)
+            await self.raw_socket.send_multipart(row_msg)
 
 
 class TubeNode:
@@ -582,15 +582,15 @@ class TubeNode:
         self._stop_main_loop = False
         self.warning_not_mach_topic = warning_not_mach_topic
 
-    def __enter__(self):
-        self.connect()
+    async def __aenter__(self):
+        await self.connect()
         args = {} if LESS38 else {'name': 'zmq/main'}
         asyncio.create_task(self.start(), **args)
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
         self.stop()
-        self.close()
+        await self.close()
 
     @property
     def tubes(self) -> [Tube]:
@@ -599,23 +599,23 @@ class TubeNode:
         """
         return flatten(self._tubes.values())
 
-    def connect(self):
+    async def connect(self):
         """
         opens all persistent connections
         """
         for tube in self.tubes:
             tube.connect()
         for monitor in self.__monitors:
-            monitor.connect()
+            await monitor.connect()
 
-    def close(self):
+    async def close(self):
         """
         close all persistent connections
         """
         for tube in self.tubes:
             tube.close()
         for monitor in self.__monitors:
-            monitor.close()
+            await monitor.close()
 
     def parse_schema(self, schema):
         """
@@ -705,14 +705,14 @@ class TubeNode:
                 callbacks_for_tube.append(clb)
         return callbacks_for_tube if callbacks_for_tube else callbacks
 
-    def send(self, topic: str, payload=None, tube=None):
+    async def send(self, topic: str, payload=None, tube=None):
         if not tube:
             tube = self.get_tube_by_topic(topic, [zmq.DEALER])
             if not tube:
                 raise TubeTopicNotConfigured(f'The topic "{topic}" is not '
                                              f'assigned to any Tube for '
                                              f'dealer.')
-        tube.send(topic, payload)
+        await tube.send(topic, payload)
 
     async def request(self, topic: str, payload=None, timeout=30,
                       post_send_callback=None) -> TubeMessage:
@@ -724,7 +724,7 @@ class TubeNode:
                                  post_send_callback=post_send_callback)
         return res
 
-    def publish(self, topic: str, payload=None):
+    async def publish(self, topic: str, payload=None):
         """
         In the case with asyncio, the first message is very often lost.
         The workaround is to connect the tube manually as soon as possible.
@@ -733,7 +733,7 @@ class TubeNode:
         if not tube:
             raise TubeTopicNotConfigured(f'The topic "{topic}" is not assigned '
                                          f'to any Tube for publishing.')
-        self.send(topic, payload, tube)
+        await self.send(topic, payload, tube)
 
     def subscribe(self, topic: str, fce: Callable):
         topic_tubes = self.filter_tube_by_topic(topic, [zmq.SUB])
@@ -778,7 +778,7 @@ class TubeNode:
                     raise TubeMessageError(
                         "The TubeMessage response object doesn't be created "
                         "from request object.")
-            _request.tube.send(response)
+            await _request.tube.send(response)
 
         poller = Poller()
         loop = asyncio.get_event_loop()
@@ -796,7 +796,11 @@ class TubeNode:
             return
         self.logger.info("The main loop was started.")
         while not self._stop_main_loop:
-            events = await poller.poll(timeout=100)
+            try:
+                events = await poller.poll(timeout=100)
+            except zmq.error.ZMQError:
+                # This happens during shutdown
+                continue
             # print(events)
             for event in events:
                 raw_socket = event[0]
@@ -806,6 +810,11 @@ class TubeNode:
                     continue
                 tube: Tube = raw_socket.__dict__['tube']
                 request = await tube.receive_data(raw_socket=raw_socket)
+                req_tubes = self._tubes.match(request.topic)
+                if tube not in req_tubes:
+                    # This message is not for this node.
+                    # The topic is not registered for this node.
+                    continue
                 callbacks = self.get_callback_by_topic(request.topic, tube)
                 if not callbacks:
                     if self.warning_not_mach_topic:

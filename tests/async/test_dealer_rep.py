@@ -87,12 +87,12 @@ async def test_dealer_reps(dealer_node, resp_node1, resp_node2, data, data2):
 
     dealer_node.register_handler(f"{TOPIC}/#", __process)
 
-    with dealer_node, resp_node1, resp_node2:
+    async with dealer_node, resp_node1, resp_node2:
         _d1 = data.copy()
         _d2 = data2.copy()
         for _ in range(len(data)):
-            dealer_node.send(f"{TOPIC}/A", _d1.pop())
-            dealer_node.send(f"{TOPIC}/B", _d2.pop())
+            await dealer_node.send(f"{TOPIC}/A", _d1.pop())
+            await dealer_node.send(f"{TOPIC}/B", _d2.pop())
         for _ in range(200):
             # We have to wait, before close nodes.
             if len(res) == 4:
@@ -126,9 +126,9 @@ async def test_dealer_reps_on_same_node(dealer_node, data):
     dealer_node.register_tube(tube, f"{TOPIC}/#")
     dealer_node.register_handler(f"{TOPIC}/#", __process_resp, tube)
 
-    with dealer_node:
+    async with dealer_node:
         for _ in range(len(data)):
-            dealer_node.send(f"{TOPIC}/A", data[0])
+            await dealer_node.send(f"{TOPIC}/A", data[0])
             await asyncio.sleep(.1)
         await asyncio.sleep(1)
 

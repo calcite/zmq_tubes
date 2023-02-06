@@ -97,12 +97,12 @@ async def test_sub_pubs(sub_node, pub_node1, pub_node2, data):
     async def step(node1, node2):
         await asyncio.sleep(.2)  # we have to wait for server is ready
         while data:
-            node1.publish(f"{TOPIC}/A", data[0])
-            node2.publish(f"{TOPIC}/B", data[1])
+            await node1.publish(f"{TOPIC}/A", data[0])
+            await node2.publish(f"{TOPIC}/B", data[1])
             await asyncio.sleep(.1)  # we have to give server time for work
 
-    with sub_node, pub_node1, pub_node2:
-        await asyncio.gather(asyncio.create_task(step(pub_node1, pub_node2)))
+    async with sub_node, pub_node1, pub_node2:
+        await step(pub_node1, pub_node2)
 
     assert len(data) == 0
 
@@ -119,11 +119,11 @@ async def test_pub_subs(sub_node, sub_node2, pub_node1, data, data2):
     async def step(node):
         await asyncio.sleep(.2)  # we have to wait for server is ready
         for _ in range(len(data)):
-            node.publish(f"{TOPIC}/A", data[0])
+            await node.publish(f"{TOPIC}/A", data[0])
             await asyncio.sleep(.1)  # we have to give server time for work
 
-    with sub_node, sub_node2, pub_node1:
-        await asyncio.gather(asyncio.create_task(step(pub_node1)))
+    async with sub_node, sub_node2, pub_node1:
+        await step(pub_node1)
 
     assert len(data) == 0
     assert len(data2) == 0
@@ -138,7 +138,7 @@ async def test_pub_sub_on_same_node(sub_node, data):
     async def step(node):
         await asyncio.sleep(.2)      # we have to wait for server is ready
         for _ in range(len(data)):
-            node.publish(f"{TOPIC}/A", data[0])
+            await node.publish(f"{TOPIC}/A", data[0])
             await asyncio.sleep(.1)  # we have to give server time for work
 
     tube = Tube(
@@ -149,7 +149,7 @@ async def test_pub_sub_on_same_node(sub_node, data):
     )
     sub_node.register_tube(tube, f"{TOPIC}/#")
 
-    with sub_node:
-        await asyncio.gather(asyncio.create_task(step(sub_node)))
+    async with sub_node:
+        await step(sub_node)
 
     assert len(data) == 0

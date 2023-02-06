@@ -37,6 +37,30 @@ class TubeMonitor(AsyncTubeMonitor):
         self.context = Context.instance()
         self.lock = Lock()
 
+    def connect(self):
+        self.raw_socket = self.context.socket(zmq.PAIR)
+        self.raw_socket.bind(self.addr)
+        self.raw_socket.__dict__['monitor'] = self
+        try:
+            with self.lock:
+                self.raw_socket.send(b'__connect__', flags=zmq.NOBLOCK)
+        except zmq.ZMQError:
+            # The monitor is not connected
+            pass
+
+    def close(self):
+        if self.raw_socket:
+            try:
+                with self.lock:
+                    self.raw_socket.send(b'__disconnect__', flags=zmq.NOBLOCK)
+                time.sleep(.1)
+            except zmq.ZMQError:
+                # The monitor is not connected
+                pass
+            self.raw_socket.close(1)
+            self.raw_socket = None
+        self.enabled = False
+
     def process(self):
         if self.raw_socket:
             self.__process_cmd(self.raw_socket.recv())
@@ -59,6 +83,34 @@ class Tube(AsyncTube):
         super().__init__(**kwargs)
         self.lock = Lock()
         self.context = Context().instance()
+
+    def send(self, *args, **kwargs):
+        if args:
+            if isinstance(args[0], TubeMessage):
+                return self.__send_message(*args, **kwargs)
+            elif isinstance(args[0], str):
+                return self.__send_payload(*args, **kwargs)
+        elif kwargs:
+            if 'message' in kwargs:
+                return self.__send_message(**kwargs)
+            elif 'topic' in kwargs:
+                return self.__send_payload(**kwargs)
+        raise NotImplementedError("Unknown type of topic")
+
+    def __send_payload(self, topic: str, payload=None, raw_socket=None):
+        """
+        Send payload to topic.
+        :param topic - topic
+        :param payload - payload
+        :param raw_socket - zmqSocket, it used for non permanent connection
+        """
+        message = TubeMessage(
+            self,
+            payload=payload,
+            topic=topic,
+            raw_socket=raw_socket if raw_socket else self.raw_socket
+        )
+        self.__send_message(message)
 
     def __send_message(self, message: TubeMessage):
         """
@@ -199,6 +251,33 @@ class TubeNode(AsyncTubeNode):
         self.stop()
         self.close()
 
+    def connect(self):
+        """
+        opens all persistent connections
+        """
+        for tube in self.tubes:
+            tube.connect()
+        for monitor in self.__monitors:
+            monitor.connect()
+
+    def close(self):
+        """
+        close all persistent connections
+        """
+        for tube in self.tubes:
+            tube.close()
+        for monitor in self.__monitors:
+            monitor.close()
+
+    def send(self, topic: str, payload=None, tube=None):
+        if not tube:
+            tube = self.get_tube_by_topic(topic, [zmq.DEALER])
+            if not tube:
+                raise TubeTopicNotConfigured(f'The topic "{topic}" is not '
+                                             f'assigned to any Tube for '
+                                             f'dealer.')
+        tube.send(topic, payload)
+
     def request(self, topic: str, payload=None, timeout=30,
                 post_send_callback=None) -> TubeMessage:
         tube = self.get_tube_by_topic(topic, [zmq.REQ])
@@ -208,6 +287,17 @@ class TubeNode(AsyncTubeNode):
         res = tube.request(topic, payload, timeout=timeout,
                            post_send_callback=post_send_callback)
         return res
+
+    def publish(self, topic: str, payload=None):
+        """
+        In the case with asyncio, the first message is very often lost.
+        The workaround is to connect the tube manually as soon as possible.
+        """
+        tube = self.get_tube_by_topic(topic, [zmq.PUB])
+        if not tube:
+            raise TubeTopicNotConfigured(f'The topic "{topic}" is not assigned '
+                                         f'to any Tube for publishing.')
+        self.send(topic, payload, tube)
 
     def stop(self):
         if self.main_thread:
@@ -308,6 +398,11 @@ class TubeNode(AsyncTubeNode):
                             request = tube.receive_data(
                                 raw_socket=raw_socket
                             )
+                            req_tubes = self._tubes.match(request.topic)
+                            if tube not in req_tubes:
+                                # This message is not for this node.
+                                # The topic is not registered for this node.
+                                continue
                             executor.submit(_one_event, request)
                         except TubeThreadDeadLock:
                             self.logger.error(

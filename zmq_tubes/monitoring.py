@@ -35,23 +35,27 @@ def logs(addr, dump_file, notime, print_stdout=True):
     :param print_stdout bool: print ZMQMessages to stdout
     """
     socket = get_socket(addr)
-    socket.send(b'__enabled__')
-    while True:
-        if socket.poll(zmq.POLLIN):
-            data = socket.recv_multipart()
-            if data:
-                if data[0] == b'__connect__':
-                    socket.send(b'__enabled__')
-                    continue
-                elif data[0] == b'__disconnect__':
-                    break
-                if dump_file:
-                    dump_file.write(b' '.join(data) + b'\n')
-                if print_stdout:
-                    data = [m.decode('utf-8', 'backslashreplace') for m in data]
-                    if notime:
-                        data.pop(0)
-                    print(' '.join(data))
+    socket.send(b'__enabled__', flags=zmq.NOBLOCK)
+    try:
+        while True:
+            if socket.poll(zmq.POLLIN):
+                data = socket.recv_multipart()
+                if data:
+                    if data[0] == b'__connect__':
+                        socket.send(b'__enabled__', flags=zmq.NOBLOCK)
+                        continue
+                    elif data[0] == b'__disconnect__':
+                        break
+                    if dump_file:
+                        dump_file.write(b' '.join(data) + b'\n')
+                    if print_stdout:
+                        data = [m.decode('utf-8', 'backslashreplace')
+                                for m in data]
+                        if notime:
+                            data.pop(0)
+                        print(' '.join(data))
+    except KeyboardInterrupt:
+        pass
 
 
 def get_schema(addr):

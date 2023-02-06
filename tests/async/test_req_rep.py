@@ -79,7 +79,7 @@ async def test_resp_reqs(resp_node, req_node1, req_node2, data):
             resp = await node.request(f"{TOPIC}/{p}", data[0], timeout=1)
             res.append('RESP' in resp.payload)
 
-    with resp_node:
+    async with resp_node:
         await asyncio.gather(
             asyncio.create_task(step(req_node1, 'A')),
             asyncio.create_task(step(req_node2, 'B', delay=.1))
@@ -105,10 +105,8 @@ async def test_req_resp_on_same_node(resp_node, data):
     )
     resp_node.register_tube(tube, f"{TOPIC}/#")
 
-    with resp_node:
-        await asyncio.gather(
-            asyncio.create_task(step(resp_node, 'A', data.copy())),
-        )
+    async with resp_node:
+        await step(resp_node, 'A', data.copy())
     assert all(res)
     assert len(data) == 0
 
@@ -127,8 +125,6 @@ async def test_req_resp_timeout(resp_node, req_node1, data):
         except TubeMessageTimeout:
             res.append(True)
 
-    with resp_node:
-        await asyncio.gather(
-            asyncio.create_task(step(req_node1, 'A')),
-        )
+    async with resp_node:
+        await step(req_node1, 'A')
     assert all(res)

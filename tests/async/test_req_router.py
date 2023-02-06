@@ -78,7 +78,7 @@ async def test_router_reqs(router_node, req_node1, req_node2, data):
             resp = await node.request(f"{TOPIC}/{p}", data[0], timeout=1)
             res.append('RESP' in resp.payload)
 
-    with router_node:
+    async with router_node:
         await asyncio.gather(
             asyncio.create_task(step(req_node1, 'A')),
             asyncio.create_task(step(req_node2, 'B', delay=.1))
@@ -108,9 +108,7 @@ async def test_req_router_on_same_node(router_node, data):
     )
     router_node.register_tube(tube, f"{TOPIC}/#")
 
-    with router_node:
-        await asyncio.gather(
-            asyncio.create_task(step(router_node, 'A')),
-        )
+    async with router_node:
+        await step(router_node, 'A')
     assert all(res)
     assert len(data) == 0

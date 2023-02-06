@@ -23,7 +23,7 @@ def data():
 def dealer_node1(request, data):
     async def __process(req):
         data.remove(req.payload)
-        req.tube.send(req.create_response(f'DEALER1-{req.payload[-2:]}'))
+        await req.tube.send(req.create_response(f'DEALER1-{req.payload[-2:]}'))
 
     tube = Tube(
         name='DEALER1',
@@ -61,9 +61,9 @@ async def test_dealer_dealer(dealer_node1, dealer_node2, data):
 
     dealer_node2.register_handler(f"{TOPIC}/#", __process)
 
-    with dealer_node1, dealer_node2:
+    async with dealer_node1, dealer_node2:
         for _ in range(len(data)):
-            dealer_node2.send(f"{TOPIC}/A", data[0])
+            await dealer_node2.send(f"{TOPIC}/A", data[0])
             await asyncio.sleep(.2)
         await asyncio.sleep(1)
 
@@ -88,9 +88,9 @@ async def test_dealer_dealer_on_same_node(dealer_node1, data):
     dealer_node1.register_tube(tube, f"{TOPIC}/#")
     dealer_node1.register_handler(f"{TOPIC}/#", __process, tube)
 
-    with dealer_node1:
+    async with dealer_node1:
         for _ in range(len(data)):
-            dealer_node1.send(f"{TOPIC}/A", data[0])
+            await dealer_node1.send(f"{TOPIC}/A", data[0])
             await asyncio.sleep(.2)
         await asyncio.sleep(1)
 
