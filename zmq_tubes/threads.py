@@ -399,7 +399,7 @@ class TubeNode(AsyncTubeNode):
                                 raw_socket=raw_socket
                             )
                             req_tubes = self._tubes.match(request.topic)
-                            if tube not in req_tubes:
+                            if req_tubes and tube not in req_tubes:
                                 # This message is not for this node.
                                 # The topic is not registered for this node.
                                 continue
