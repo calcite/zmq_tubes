@@ -384,7 +384,8 @@ class TubeNode(AsyncTubeNode):
                     for event in events:
                         # self.logger.debug(f"New event {event}")
                         raw_socket = event[0]
-                        if 'monitor' in raw_socket.__dict__:
+                        if isinstance(raw_socket, object) and \
+                                'monitor' in raw_socket.__dict__:
                             try:
                                 monitor = raw_socket.__dict__['monitor']
                                 executor.submit(monitor.process)
