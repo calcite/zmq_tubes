@@ -804,7 +804,8 @@ class TubeNode:
             # print(events)
             for event in events:
                 raw_socket = event[0]
-                if 'monitor' in raw_socket.__dict__:
+                if isinstance(raw_socket, object) and \
+                        'monitor' in raw_socket.__dict__:
                     monitor = raw_socket.__dict__['monitor']
                     await monitor.process()
                     continue
