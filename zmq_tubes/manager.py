@@ -438,7 +438,7 @@ class Tube:
                         f"({request.topic} != {response.topic}).")
                 return response
             else:
-                self.logger.error("The request timout")
+                self.logger.error("The request timeout")
         finally:
             if not self.is_persistent:
                 # self.logger.debug(f"Close tube {self.name}")
