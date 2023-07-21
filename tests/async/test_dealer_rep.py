@@ -99,7 +99,7 @@ async def test_dealer_reps(dealer_node, resp_node1, resp_node2, data, data2):
             # We have to wait, before close nodes.
             if len(res) == 4:
                 break
-            await asyncio.sleep(0.1)
+            await asyncio.sleep(0.2)
 
     assert len(res) == 4
     assert len(data) == 0
