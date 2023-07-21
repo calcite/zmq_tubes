@@ -93,6 +93,7 @@ async def test_dealer_reps(dealer_node, resp_node1, resp_node2, data, data2):
         _d2 = data2.copy()
         for _ in range(len(data)):
             await dealer_node.send(f"{TOPIC}/A", _d1.pop())
+            await asyncio.sleep(0.1)
             await dealer_node.send(f"{TOPIC}/B", _d2.pop())
             await asyncio.sleep(0.1)
         for _ in range(200):
