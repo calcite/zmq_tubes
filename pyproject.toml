@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "zmq_tubes"
-version = "1.12.0"
+version = "1.13.0"
 license = "MIT"
 readme = "README.md"
 description = "Wrapper for ZMQ comunication."
