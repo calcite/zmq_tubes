@@ -123,7 +123,8 @@ class Tube(AsyncTube):
             raise TubeConnectionError(
                 f'The tube {message.tube.name} is already closed.')
         if not self.lock.acquire(timeout=10):
-            raise TubeThreadDeadLock()
+            raise TubeThreadDeadLock(f"The tube '{self.name}' waits more then "
+                                     f"10s for access to socket.")
         try:
             message.raw_socket.send_multipart(raw_msg)
             try:
@@ -199,8 +200,6 @@ class Tube(AsyncTube):
                         f"The response comes to different topic "
                         f"({request.topic} != {response.topic}).")
                 return response
-            else:
-                self.logger.error("The request timeout")
         finally:
             if not self.is_persistent:
                 # self.logger.debug(f"Close tube {self.name}")
@@ -215,7 +214,8 @@ class Tube(AsyncTube):
         if not raw_socket:
             raw_socket = self.raw_socket
         if not self.lock.acquire(timeout=timeout):
-            raise TubeThreadDeadLock()
+            raise TubeThreadDeadLock(f"The tube '{self.name}' waits more then "
+                                     f"{timeout}s for access to socket.")
         try:
             raw_data = raw_socket.recv_multipart()
         finally:
@@ -327,10 +327,6 @@ class TubeNode(AsyncTubeNode):
                 self.logger.warning(
                     f"The client (tube '{tube.name}') closes the socket for "
                     f"sending answer. Probably timeout.")
-            except TubeThreadDeadLock:
-                self.logger.error(
-                    f"The tube '{tube.name}' waits more then "
-                    f"10s for access to socket.")
 
         def _one_event(request):
             callbacks = self.get_callback_by_topic(request.topic, request.tube)
@@ -395,20 +391,15 @@ class TubeNode(AsyncTubeNode):
                                     exc_info=ex)
                             continue
                         tube: Tube = raw_socket.__dict__['tube']
-                        try:
-                            request = tube.receive_data(
-                                raw_socket=raw_socket
-                            )
-                            req_tubes = self._tubes.match(request.topic)
-                            if req_tubes and tube not in req_tubes:
-                                # This message is not for this node.
-                                # The topic is not registered for this node.
-                                continue
-                            executor.submit(_one_event, request)
-                        except TubeThreadDeadLock:
-                            self.logger.error(
-                                f"The tube '{tube.name}' waits more then "
-                                f"3s for access to socket.")
+                        request = tube.receive_data(
+                            raw_socket=raw_socket
+                        )
+                        req_tubes = self._tubes.match(request.topic)
+                        if req_tubes and tube not in req_tubes:
+                            # This message is not for this node.
+                            # The topic is not registered for this node.
+                            continue
+                        executor.submit(_one_event, request)
             self.logger.info("The main process was ended.")
 
         if not self.main_thread:
