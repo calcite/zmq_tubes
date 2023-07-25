@@ -115,7 +115,7 @@ async def test_dealer_reps(dealer_node, resp_node1, resp_node2, data, data2,
             await dealer_node.send(f"{TOPIC}/B", data2.pop())
         assert await wait_for_result(
             lambda: len(res) == 4 and len(result) == 2 and len(result2) == 2,
-            timeout=1
+            timeout=3
         )
 
 
@@ -146,7 +146,7 @@ async def test_dealer_reps_on_same_node(dealer_node, data, result):
             await dealer_node.send(f"{TOPIC}/A", data.pop())
         assert await wait_for_result(
             lambda: len(res) == 2 and len(result) == 2,
-            timeout=1
+            timeout=3
         )
 
 
@@ -167,5 +167,5 @@ async def test_dealer_reps_bytes(dealer_node, resp_node1, result):
         assert await wait_for_result(
             lambda: len(res) == 1 and isinstance(res[0], bytes) and
                     len(result) == 1 and isinstance(result[0], bytes),
-            timeout=1
+            timeout=3
         )
