@@ -1,7 +1,8 @@
-import pytest
 import time
 import zmq
+import pytest
 
+from tests.helpers import wait_for_result2 as wait_for_result
 from zmq_tubes.manager import TubeMessageTimeout
 from zmq_tubes.threads import Tube, TubeNode
 
@@ -11,22 +12,31 @@ TOPIC = 'req'
 
 @pytest.fixture
 def data():
-    return ['REQ10', 'REQ11', 'REQ20', 'REQ21']
+    return ['REQ10', 'REQ11', 'REQ20', 'REQ21'].copy()
 
 
-@pytest.fixture(params=[{'server': True, 'sleep': None}])
-def resp_node(data, request):
+@pytest.fixture
+def result():
+    return []
+
+
+@pytest.fixture(params=[{'server': True, 'sleep': None, 'utf8_decoding': True}])
+def resp_node(result, request):
     def __process(req):
-        data.remove(req.payload)
+        result.append(req.payload)
         if request.param['sleep']:
             time.sleep(request.param['sleep'])
-        return req.create_response(f'RESP{req.payload[-2:]}')
+        return req.create_response(
+            f'RESP{req.payload[-2:]}' if request.param['utf8_decoding'] else
+            b'RESP' + req.payload[-2:]
+        )
 
     tube = Tube(
         name='REP',
         addr=ADDR,
         server=request.param['server'],
-        tube_type=zmq.REP
+        tube_type=zmq.REP,
+        utf8_decoding=request.param['utf8_decoding']
     )
 
     node = TubeNode()
@@ -35,13 +45,14 @@ def resp_node(data, request):
     return node
 
 
-@pytest.fixture(params=[{'server': False}])
+@pytest.fixture(params=[{'server': False, 'utf8_decoding': True}])
 def req_node1(request):
     tube = Tube(
         name='REQ1',
         addr=ADDR,
         server=request.param['server'],
-        tube_type=zmq.REQ
+        tube_type=zmq.REQ,
+        utf8_decoding=request.param['utf8_decoding']
     )
 
     node = TubeNode()
@@ -49,39 +60,85 @@ def req_node1(request):
     return node
 
 
-def test_resp_reqs(resp_node, req_node1, data):
-
-    with resp_node:
-        for _ in range(len(data)):
-            res = req_node1.request(f"{TOPIC}/A", data[0], timeout=1)
-            assert 'RESP' in res.payload
-
-    assert len(data) == 0
-
-
-def test_resp_reqs_on_same_node(resp_node, data):
+@pytest.fixture(params=[{'server': False, 'utf8_decoding': True}])
+def req_node2(request):
     tube = Tube(
-        name='REQ1',
+        name='REQ2',
+        addr=ADDR,
+        server=request.param['server'],
+        tube_type=zmq.REQ,
+        utf8_decoding=request.param['utf8_decoding']
+    )
+
+    node = TubeNode()
+    node.register_tube(tube, f"{TOPIC}/#")
+    return node
+
+
+################################################################################
+#   Tests
+################################################################################
+
+def test_resp_reqs(resp_node, req_node1, data, result):
+    res = []
+    result.clear()
+    with resp_node:
+        while data:
+            resp = req_node1.request(f"{TOPIC}/A", data.pop(), timeout=1)
+            res.append('RESP' in resp.payload)
+        assert wait_for_result(
+            lambda: len(res) == 4 and all(res) and len(result) == 4,
+            timeout=1
+        )
+
+
+def test_resp_reqs_on_same_node(resp_node, data, result):
+    res = []
+    result.clear()
+    tube = Tube(
+        name='REQ',
         addr=ADDR,
         server=False,
         tube_type=zmq.REQ
     )
     resp_node.register_tube(tube, f"{TOPIC}/#")
     with resp_node:
-        for _ in range(len(data)):
-            res = resp_node.request(f"{TOPIC}/A", data[0], timeout=1)
-            assert 'RESP' in res.payload
-
-    assert len(data) == 0
+        while data:
+            resp = resp_node.request(f"{TOPIC}/A", data.pop(), timeout=1)
+            res.append('RESP' in resp.payload)
+        assert wait_for_result(
+            lambda: len(res) == 4 and all(res) and len(result) == 4,
+            timeout=1
+        )
 
 
 @pytest.mark.parametrize("resp_node",
-                         [({'server': True, 'sleep': 1})],
+                         [({'server': True, 'sleep': 1,
+                            'utf8_decoding': True})],
                          indirect=["resp_node"])
 def test_req_resp_timeout(resp_node, req_node1, data):
     with resp_node:
         try:
-            req_node1.request(f"{TOPIC}/A", data[0], timeout=.6)
+            req_node1.request(f"{TOPIC}/A", data.pop(), timeout=.1)
             assert False
         except TubeMessageTimeout:
             assert True
+
+
+@pytest.mark.parametrize("resp_node,req_node1",
+                         [({'server': True, 'sleep': None,
+                            'utf8_decoding': False},
+                           {'server': False, 'utf8_decoding': False})],
+                         indirect=["resp_node", "req_node1"])
+def test_req_resp_bytes(resp_node, req_node1, data, result):
+    result.clear()
+    with resp_node:
+        rr = req_node1.request(f"{TOPIC}/A", data.pop())
+        assert isinstance(rr.payload, bytes)
+        rr = req_node1.request(f"{TOPIC}/A", data.pop(),
+                               utf8_decoding=True)
+        assert not isinstance(rr.payload, bytes)
+        assert wait_for_result(
+            lambda: len(result) == 2 and isinstance(result[0], bytes),
+            timeout=1
+        )

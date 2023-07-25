@@ -1,7 +1,41 @@
 import asyncio
 import logging
 import threading
+import time
 from threading import Thread
+
+
+async def wait_for_result(condition, timeout, params=None):
+    if not params:
+        params = []
+
+    async def __test():
+        while True:
+            try:
+                if condition(*params):
+                    return
+            except Exception:
+                pass
+            await asyncio.sleep(0.1)
+    try:
+        await asyncio.wait_for(__test(), timeout=timeout)
+        return True
+    except asyncio.TimeoutError:
+        return False
+
+
+def wait_for_result2(condition, timeout, params=None):
+    if not params:
+        params = []
+    while timeout > 0:
+        try:
+            if condition(*params):
+                return True
+        except Exception:
+            pass
+        time.sleep(0.1)
+        timeout -= 0.1
+    return False
 
 
 def _handle_task_result(task: asyncio.Task) -> None:

@@ -98,7 +98,7 @@ class TubeMessage:
             payload=payload
         )
 
-    def parse(self, data):
+    def parse(self, data, utf8_decoding=True):
         if self.tube.tube_type == zmq.ROUTER:
             if len(data) != 4:
                 raise TubeMessageError(
@@ -113,12 +113,14 @@ class TubeMessage:
                     f"is in unknown format. '{data}'")
             data.pop(0)
 
-        data = [it.decode('utf-8') for it in data]
         if len(data) != 2:
             raise TubeMessageError(
                 f"The received message (tube '{self.tube.name}') "
-                f"is in unknown format. '{data}'")
+                f"is in unknown format. {data}")
         self.topic, self.payload = data
+        self.topic = self.topic.decode('utf-8')
+        if utf8_decoding:
+            self.payload = self.payload.decode('utf-8')
 
     def format_message(self):
         response = []
@@ -154,6 +156,7 @@ class Tube:
         self.tube_type = kwargs.get('tube_type')
         self.identity = kwargs.get('identity')
         self.monitor = kwargs.get('monitor')
+        self.utf8_decoding = kwargs.get('utf8_decoding', True)
 
     @staticmethod
     def get_tube_type_name(tube_type):
@@ -379,6 +382,7 @@ class Tube:
         :param payload: Optional[dict]
         :param timeout: int
         :param post_send_callback: Optional[Callable]
+        :param utf8_decoding: bool (default True)
         :return:
         """
         if args:
@@ -404,7 +408,7 @@ class Tube:
         raise NotImplementedError("Unknown type of topic")
 
     async def __request_payload(self, topic: str, payload=None, timeout=None,
-                                post_send_callback=None):
+                                post_send_callback=None, utf8_decoding=None):
         request = TubeMessage(
             self,
             payload=payload,
@@ -412,11 +416,12 @@ class Tube:
             raw_socket=self.raw_socket
         )
         return await self.__request_message(
-            request, timeout=timeout, post_send_callback=post_send_callback
+            request, timeout=timeout, post_send_callback=post_send_callback,
+            utf8_decoding=utf8_decoding
         )
 
     async def __request_message(self, request: TubeMessage, timeout: int = 30,
-                                post_send_callback=None):
+                                post_send_callback=None, utf8_decoding=None):
         if self.tube_type != zmq.REQ:
             raise TubeMethodNotSupported(
                 f"The tube '{self.name}' (type: '{self.tube_type_name}') "
@@ -431,7 +436,9 @@ class Tube:
                     post_send_callback(request)
             if await request.raw_socket.poll(timeout * 1000) != 0:
                 response = await self.receive_data(
-                    raw_socket=request.raw_socket)
+                    raw_socket=request.raw_socket,
+                    utf8_decoding=utf8_decoding
+                )
                 if response.topic != request.topic:
                     raise TubeMessageError(
                         f"The response comes to different topic "
@@ -447,14 +454,17 @@ class Tube:
         raise TubeMessageTimeout(
             f"No answer for the request in {timeout}s. Topic: {request.topic}")
 
-    async def receive_data(self, raw_socket=None):
+    async def receive_data(self, raw_socket=None, utf8_decoding=None):
         if not raw_socket:
             raw_socket = self.raw_socket
         raw_data = await raw_socket.recv_multipart()
         self.logger.debug(
             f"Received (tube {self.name}): {raw_data}")
         message = TubeMessage(tube=self, raw_socket=raw_socket)
-        message.parse(raw_data)
+        message.parse(
+            raw_data,
+            self.utf8_decoding if utf8_decoding is None else utf8_decoding
+        )
         try:
             if self.monitor:
                 await self.monitor.receive_message(message)
@@ -653,7 +663,7 @@ class TubeNode:
         if not res:
             return None
         if isinstance(res, list):
-            res = res.pop()
+            res = res[-1]
         return res
 
     def filter_tube_by_topic(self, topic: str, types=None) -> [(str, Tube)]:
@@ -713,13 +723,15 @@ class TubeNode:
         await tube.send(topic, payload)
 
     async def request(self, topic: str, payload=None, timeout=30,
-                      post_send_callback=None) -> TubeMessage:
+                      post_send_callback=None, utf8_decoding=None
+                      ) -> TubeMessage:
         tube = self.get_tube_by_topic(topic, [zmq.REQ])
         if not tube:
             raise TubeTopicNotConfigured(f'The topic "{topic}" is not assigned '
                                          f'to any Tube for request.')
         res = await tube.request(topic, payload, timeout=timeout,
-                                 post_send_callback=post_send_callback)
+                                 post_send_callback=post_send_callback,
+                                 utf8_decoding=utf8_decoding)
         return res
 
     async def publish(self, topic: str, payload=None):

@@ -1,7 +1,7 @@
 import pytest
-import time
 import zmq
 
+from tests.helpers import wait_for_result2
 from zmq_tubes.threads import Tube, TubeNode
 
 ADDR = 'ipc:///tmp/dealer_rep.pipe'
@@ -10,21 +10,32 @@ TOPIC = 'req'
 
 @pytest.fixture
 def data():
-    return ['REQ10', 'REQ11']
+    return ['REQ10', 'REQ11'].copy()
 
 
 @pytest.fixture
 def data2():
-    return ['REQ20', 'REQ21']
+    return ['REQ20', 'REQ21'].copy()
 
 
-@pytest.fixture(params=[{'server': True}])
+@pytest.fixture
+def result():
+    return []
+
+
+@pytest.fixture
+def result2():
+    return []
+
+
+@pytest.fixture(params=[{'server': True, 'utf8_decoding': True}])
 def dealer_node(request):
     tube = Tube(
-        name='DEALER',
+        name='DEALER1',
         addr=ADDR,
         server=request.param['server'],
-        tube_type=zmq.DEALER
+        tube_type=zmq.DEALER,
+        utf8_decoding=request.param['utf8_decoding']
     )
 
     node = TubeNode()
@@ -32,79 +43,89 @@ def dealer_node(request):
     return node
 
 
-@pytest.fixture(params=[{'server': False}])
-def resp_node1(data, request):
+@pytest.fixture(params=[{'server': False, 'utf8_decoding': True}])
+def resp_node1(result, request):
     def __process(req):
-        if req.payload in data:
-            data.remove(req.payload)
-            return req.create_response(f'RESP{req.payload[-2:]}')
+        result.append(req.payload)
+        return req.create_response(
+            f'RESP1{req.payload[-2:]}' if request.param['utf8_decoding']
+            else b'RESP1' + req.payload[-2:])
 
     tube = Tube(
-        name='REP1',
+        name='RESP1',
         addr=ADDR,
         server=request.param['server'],
-        tube_type=zmq.REP
+        tube_type=zmq.REP,
+        utf8_decoding=request.param['utf8_decoding']
     )
 
     node = TubeNode()
-    node.register_tube(tube, f"{TOPIC}/#")
-    node.register_handler(f"{TOPIC}/#", __process)
+    node.register_tube(tube, f"{TOPIC}/A")
+    node.register_handler(f"{TOPIC}/A", __process, tube)
     return node
 
 
-@pytest.fixture(params=[{'server': False}])
-def resp_node2(data2, request):
+@pytest.fixture(params=[{'server': False, 'utf8_decoding': True}])
+def resp_node2(result2, request):
     def __process(req):
-        if req.payload in data2:
-            data2.remove(req.payload)
-            return req.create_response(f'RESP{req.payload[-2:]}')
+        result2.append(req.payload)
+        return req.create_response(
+            f'RESP2{req.payload[-2:]}' if request.param['utf8_decoding']
+            else b'RESP2' + req.payload[-2:]
+        )
 
     tube = Tube(
-        name='REP2',
+        name='RESP2',
         addr=ADDR,
         server=request.param['server'],
-        tube_type=zmq.REP
+        tube_type=zmq.REP,
+        utf8_decoding=request.param['utf8_decoding']
     )
 
     node = TubeNode()
-    node.register_tube(tube, f"{TOPIC}/#")
-    node.register_handler(f"{TOPIC}/#", __process)
+    node.register_tube(tube, f"{TOPIC}/B")
+    node.register_handler(f"{TOPIC}/B", __process, tube)
     return node
 
 
-def test_dealer_reps(dealer_node, resp_node1, resp_node2, data, data2):
+################################################################################
+#   Tests
+################################################################################
+
+def test_dealer_reps(dealer_node, resp_node1, resp_node2, data, data2,
+                     result, result2):
+    """
+    One dealer send request to two resp servers
+    """
     res = []
 
     def __process(req):
         res.append(req.payload)
-
     dealer_node.register_handler(f"{TOPIC}/#", __process)
-
+    result.clear()
+    result2.clear()
     with dealer_node, resp_node1, resp_node2:
-        d1 = data.copy()
-        d2 = data2.copy()
-        while d1 and d2:
-            dealer_node.send(f"{TOPIC}/A", d1.pop(0))
-            dealer_node.send(f"{TOPIC}/A", d2.pop(0))
-        time.sleep(1)
-
-    assert len(res) == 4
-    assert len(data) == 0
-    assert len(data2) == 0
+        while data:
+            dealer_node.send(f"{TOPIC}/A", data.pop())
+            dealer_node.send(f"{TOPIC}/B", data2.pop())
+        assert wait_for_result2(
+            lambda: len(res) == 4 and len(result) == 2 and len(result2) == 2,
+            timeout=1
+        )
 
 
-def test_dealer_reps_on_same_node(dealer_node, data):
+def test_dealer_reps_on_same_node(dealer_node, data, result):
     res = []
 
     def __process(req):
         res.append(req.payload)
-
     dealer_node.register_handler(f"{TOPIC}/#", __process, dealer_node.tubes[0])
 
     def __process_resp(req):
-        data.remove(req.payload)
+        result.append(req.payload)
         return req.create_response(f'RESP-{req.payload[-2:]}')
 
+    result.clear()
     tube = Tube(
         name='RESP',
         addr=ADDR,
@@ -115,9 +136,30 @@ def test_dealer_reps_on_same_node(dealer_node, data):
     dealer_node.register_handler(f"{TOPIC}/#", __process_resp, tube)
 
     with dealer_node:
-        for it in data.copy():
-            dealer_node.send(f"{TOPIC}/A", it)
-        time.sleep(.1)
+        while data:
+            dealer_node.send(f"{TOPIC}/A", data.pop())
+        assert wait_for_result2(
+            lambda: len(res) == 2 and len(result) == 2,
+            timeout=1
+        )
 
-    assert len(res) == 2
-    assert len(data) == 0
+
+@pytest.mark.parametrize("dealer_node,resp_node1",
+                         [({'server': True, 'utf8_decoding': False},
+                           {'server': False, 'utf8_decoding': False})],
+                         indirect=["dealer_node", "resp_node1"])
+def test_dealer_reps_bytes(dealer_node, resp_node1, result):
+    res = []
+
+    def __process(req):
+        res.append(req.payload)
+
+    dealer_node.register_handler(f"{TOPIC}/#", __process)
+    result.clear()
+    with dealer_node, resp_node1:
+        dealer_node.send(f"{TOPIC}/A", 'XXX')
+        assert wait_for_result2(
+            lambda: len(res) == 1 and isinstance(res[0], bytes) and
+                    len(result) == 1 and isinstance(result[0], bytes),
+            timeout=1
+        )
