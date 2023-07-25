@@ -57,4 +57,4 @@ jobs:
 
       - name: Run pytest
         shell: bash
-        run: python -m pytest --log-cli-level=DEBUG --capture=tee-sys -s -v  tests/
+        run: python -m pytest -p no:sugar --log-cli-level=DEBUG --capture=tee-sys tests
