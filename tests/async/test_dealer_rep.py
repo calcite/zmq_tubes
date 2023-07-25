@@ -1,3 +1,5 @@
+import asyncio
+
 import sys
 import zmq
 import pytest
