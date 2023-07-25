@@ -149,6 +149,7 @@ class Tube(AsyncTube):
                 :param payload: Optional[dict]
                 :param timeout: int
                 :param post_send_callback: Optional[Callable]
+                :param utf8_decoding: bool (default True)
                 :return: TubeMessage
                 """
         if args:
@@ -172,18 +173,19 @@ class Tube(AsyncTube):
         raise NotImplementedError("Unknown type of topic")
 
     def __request_payload(self, topic: str, payload=None, timeout=None,
-                          post_send_callback=None):
+                          post_send_callback=None, utf8_decoding=None):
         request = TubeMessage(
             self,
             payload=payload,
             topic=topic,
             raw_socket=self.raw_socket,
         )
-        return self.request(request, timeout=timeout,
-                            post_send_callback=post_send_callback)
+        return self.__request_message(request, timeout=timeout,
+                                      post_send_callback=post_send_callback,
+                                      utf8_decoding=utf8_decoding)
 
     def __request_message(self, request: TubeMessage, timeout: int = 30,
-                          post_send_callback=None):
+                          post_send_callback=None, utf8_decoding=None):
         if self.tube_type != zmq.REQ:
             raise TubeMethodNotSupported(
                 f"The tube '{self.name}' (type: '{self.tube_type_name}') "
@@ -194,7 +196,10 @@ class Tube(AsyncTube):
             if post_send_callback:
                 post_send_callback(request)
             if request.raw_socket.poll(timeout * 1000) != 0:
-                response = self.receive_data(raw_socket=request.raw_socket)
+                response = self.receive_data(
+                    raw_socket=request.raw_socket,
+                    utf8_decoding=utf8_decoding
+                )
                 if response.topic != request.topic:
                     raise TubeMessageError(
                         f"The response comes to different topic "
@@ -210,7 +215,7 @@ class Tube(AsyncTube):
         raise TubeMessageTimeout(
             f"No answer for the request in {timeout}s. Topic: {request.topic}")
 
-    def receive_data(self, raw_socket=None, timeout=3):
+    def receive_data(self, raw_socket=None, timeout=3, utf8_decoding=None):
         if not raw_socket:
             raw_socket = self.raw_socket
         if not self.lock.acquire(timeout=timeout):
@@ -223,7 +228,10 @@ class Tube(AsyncTube):
         self.logger.debug(
             f"Received (tube {self.name}): {raw_data}")
         message = TubeMessage(tube=self, raw_socket=raw_socket)
-        message.parse(raw_data)
+        message.parse(
+            raw_data,
+            self.utf8_decoding if utf8_decoding is None else utf8_decoding
+        )
         try:
             if self.monitor:
                 self.monitor.receive_message(message)
@@ -279,13 +287,14 @@ class TubeNode(AsyncTubeNode):
         tube.send(topic, payload)
 
     def request(self, topic: str, payload=None, timeout=30,
-                post_send_callback=None) -> TubeMessage:
+                post_send_callback=None, utf8_decoding=None) -> TubeMessage:
         tube = self.get_tube_by_topic(topic, [zmq.REQ])
         if not tube:
             raise TubeTopicNotConfigured(f'The topic "{topic}" is not assigned '
                                          f'to any Tube for request.')
         res = tube.request(topic, payload, timeout=timeout,
-                           post_send_callback=post_send_callback)
+                           post_send_callback=post_send_callback,
+                           utf8_decoding=utf8_decoding)
         return res
 
     def publish(self, topic: str, payload=None):

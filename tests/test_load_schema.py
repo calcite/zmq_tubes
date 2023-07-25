@@ -25,6 +25,7 @@ def test_load_schema_simple():
     assert node.tubes[0].is_server
     assert node.tubes[0].tube_type_name == 'REP'
     assert node.tubes[0].identity == 'XXX'
+    assert node.tubes[0].utf8_decoding
     assert node.get_tube_by_topic('foo/aaa') is not None
     assert node.get_tube_by_topic('xxx/bar') is not None
     assert node.get_tube_by_topic('xxx/aaa') is None
@@ -43,6 +44,7 @@ def test_load_schema_hierarchy():
     - name: tube2
       addr:  ipc:///tmp/test.pipe
       tube_type: REQ
+      utf8_decoding: False
       topics:
         - foo/test/#
         - +/bar/test
@@ -53,5 +55,6 @@ def test_load_schema_hierarchy():
     assert len(node.tubes) == 2
     assert node.get_tube_by_topic('foo/aaa').name == 'tube1'
     assert node.get_tube_by_topic('foo/test/aaa').name == 'tube2'
+    assert node.get_tube_by_topic('foo/test/aaa').utf8_decoding == False
     assert node.get_tube_by_topic('xxx/bar').name == 'tube1'
     assert node.get_tube_by_topic('xxx/bar/test').name == 'tube2'

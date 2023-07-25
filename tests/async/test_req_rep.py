@@ -4,6 +4,7 @@ import asyncio
 import zmq
 import pytest
 
+from tests.helpers import wait_for_result
 from zmq_tubes.manager import TubeMessageTimeout
 from zmq_tubes import Tube, TubeNode
 
@@ -16,22 +17,34 @@ TOPIC = 'req'
 
 @pytest.fixture
 def data():
-    return ['REQ10', 'REQ11', 'REQ20', 'REQ21']
+    return ['REQ10', 'REQ11'].copy()
 
 
-@pytest.fixture(params=[{'server': True, 'sleep': None}])
-def resp_node(data, request):
+@pytest.fixture
+def data2():
+    return ['REQ20', 'REQ21'].copy()
+
+@pytest.fixture
+def result():
+    return []
+
+@pytest.fixture(params=[{'server': True, 'sleep': None, 'utf8_decoding': True}])
+def resp_node(result, request):
     async def __process(req):
-        data.remove(req.payload)
+        result.append(req.payload)
         if request.param['sleep']:
             await asyncio.sleep(request.param['sleep'])
-        return req.create_response(f'RESP{req.payload[-2:]}')
+        return req.create_response(
+            f'RESP{req.payload[-2:]}' if request.param['utf8_decoding'] else
+            b'RESP'+req.payload[-2:]
+        )
 
     tube = Tube(
         name='REP',
         addr=ADDR,
         server=request.param['server'],
-        tube_type=zmq.REP
+        tube_type=zmq.REP,
+        utf8_decoding=request.param['utf8_decoding']
     )
 
     node = TubeNode()
@@ -40,13 +53,14 @@ def resp_node(data, request):
     return node
 
 
-@pytest.fixture(params=[{'server': False}])
+@pytest.fixture(params=[{'server': False, 'utf8_decoding': True}])
 def req_node1(request):
     tube = Tube(
         name='REQ1',
         addr=ADDR,
         server=request.param['server'],
-        tube_type=zmq.REQ
+        tube_type=zmq.REQ,
+        utf8_decoding=request.param['utf8_decoding']
     )
 
     node = TubeNode()
@@ -54,13 +68,14 @@ def req_node1(request):
     return node
 
 
-@pytest.fixture(params=[{'server': False}])
+@pytest.fixture(params=[{'server': False, 'utf8_decoding': True}])
 def req_node2(request):
     tube = Tube(
         name='REQ2',
         addr=ADDR,
         server=request.param['server'],
-        tube_type=zmq.REQ
+        tube_type=zmq.REQ,
+        utf8_decoding=request.param['utf8_decoding']
     )
 
     node = TubeNode()
@@ -68,35 +83,36 @@ def req_node2(request):
     return node
 
 
-@pytest.mark.asyncio
-async def test_resp_reqs(resp_node, req_node1, req_node2, data):
-    res = []
+################################################################################
+#   Tests
+################################################################################
 
-    async def step(node, p, delay=None):
+@pytest.mark.asyncio
+async def test_resp_reqs(resp_node, req_node1, req_node2, data, data2, result):
+    res = []
+    result.clear()
+    async def step(node, d, p, delay=None):
         if delay:
             await asyncio.sleep(delay)  # distance between tasks
-        while data:
-            resp = await node.request(f"{TOPIC}/{p}", data[0], timeout=1)
+        while d:
+            resp = await node.request(f"{TOPIC}/{p}", d.pop(), timeout=1)
             res.append('RESP' in resp.payload)
 
     async with resp_node:
         await asyncio.gather(
-            asyncio.create_task(step(req_node1, 'A')),
-            asyncio.create_task(step(req_node2, 'B', delay=.1))
+            asyncio.create_task(step(req_node1, data, 'A')),
+            asyncio.create_task(step(req_node2, data2, 'B', delay=.05))
         )
-    assert all(res)
-    assert len(data) == 0
+        assert await wait_for_result(
+            lambda: len(res) == 4 and all(res) and len(result) == 4,
+            timeout=1
+        )
 
 
 @pytest.mark.asyncio
-async def test_req_resp_on_same_node(resp_node, data):
+async def test_req_resp_on_same_node(resp_node, data, result):
     res = []
-
-    async def step(node, p, d):
-        for it in d:
-            resp = await node.request(f"{TOPIC}/{p}", it, timeout=1)
-            res.append('RESP' in resp.payload)
-
+    result.clear()
     tube = Tube(
         name='REQ',
         addr=ADDR,
@@ -104,27 +120,43 @@ async def test_req_resp_on_same_node(resp_node, data):
         tube_type=zmq.REQ
     )
     resp_node.register_tube(tube, f"{TOPIC}/#")
-
     async with resp_node:
-        await step(resp_node, 'A', data.copy())
-    assert all(res)
-    assert len(data) == 0
-
+        while data:
+            resp = await resp_node.request(f"{TOPIC}/A", data.pop(), timeout=1)
+            res.append('RESP' in resp.payload)
+        assert await wait_for_result(
+            lambda: len(res) == 2 and all(res) and len(result) == 2,
+            timeout=1
+        )
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("resp_node",
-                         [({'server': True, 'sleep': 3})],
+                         [({'server': True, 'sleep': 1, 'utf8_decoding': True})],
                          indirect=["resp_node"])
 async def test_req_resp_timeout(resp_node, req_node1, data):
-    res = []
-
-    async def step(node, p):
-        try:
-            await node.request(f"{TOPIC}/{p}", data[0], timeout=.5)
-            res.append(False)
-        except TubeMessageTimeout:
-            res.append(True)
-
     async with resp_node:
-        await step(req_node1, 'A')
-    assert all(res)
+        try:
+            await req_node1.request(f"{TOPIC}/A", data.pop(), timeout=.1)
+            assert False
+        except TubeMessageTimeout:
+            assert True
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("resp_node,req_node1",
+                         [({'server': True, 'sleep': None,
+                            'utf8_decoding': False},
+                           {'server': False, 'utf8_decoding': False})],
+                         indirect=["resp_node", "req_node1"])
+async def test_req_resp_bytes(resp_node, req_node1, data, result):
+    result.clear()
+    async with resp_node:
+        rr = await req_node1.request(f"{TOPIC}/A", data.pop())
+        assert isinstance(rr.payload, bytes)
+        rr = await req_node1.request(f"{TOPIC}/A", data.pop(),
+                                     utf8_decoding=True)
+        assert not isinstance(rr.payload, bytes)
+        assert await wait_for_result(
+            lambda: len(result) == 2 and isinstance(result[0], bytes),
+            timeout=1
+        )

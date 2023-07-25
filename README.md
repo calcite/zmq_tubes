@@ -29,58 +29,109 @@ from zmq_tubes.threads import TubeNode, Tube    # Threads classes
 ## Usage:
 
 ### Node definitions in yml file 
-We can define all tubes for one TubeNode by yml file. 
-
+We can define all tubes for one TubeNode by yml file.
+Next examples require install these packages `PyYAML`, `pyzmq` and `zmq_tubes`.
+#### Client service (asyncio example)
 ```yaml
-# test.yml
+# client.yml
 tubes:
   - name: Client REQ
-    addr:  ipc:///tmp/req.pipe    
+    addr:  ipc:///tmp/req.pipe
     tube_type: REQ
     topics:
-      - foo/#
-      - +/bar
+      - foo/bar
   
   - name: Client PUB
-    addr:  ipc:///tmp/pub.pipe    
+    addr:  ipc:///tmp/pub.pipe
     tube_type: PUB
     topics:
       - foo/pub/#
-
-  - name: Server ROUTER
-    addr:  ipc:///tmp/router.pipe    
-    tube_type: ROUTER
-    server: yes
-    sockopts:
-      LINGER: 0
-    topics:
-      - server/#
 ```
 
 ```python
+# client.py
 import asyncio
 import yaml
 from zmq_tubes import TubeNode, TubeMessage
 
 
-async def handler(request: TubeMessage):
-  print(request.payload)
-  return request.create_response('response')
-
-
 async def run():
-  with open('test.yml', 'r+') as fd:
+  with open('client.yml', 'r+') as fd:
     schema = yaml.safe_load(fd)
-  node = TubeNode(schema=schema)
-  node.register_handler('server/#', handler)
+  node = TubeNode(schema=schema)  
   async with node:
-      await node.publish('foo/pub/test', 'message 1')
-      print(await node.request('foo/xxx', 'message 2'))
+      print(await node.request('foo/bar', 'message 1'))
+      await node.publish('foo/pub/test', 'message 2')
 
-asyncio.run(run())
+if __name__ == "__main__":
+    asyncio.run(run())
+```
+```shell
+> python client.py
+topic: foo/bar,  payload: response
 ```
 
 
+#### Server service (threads example)
+```yaml
+# server.yml
+tubes:
+  - name: server ROUTER
+    addr:  ipc:///tmp/req.pipe
+    tube_type: ROUTER
+    server: True
+    topics:
+      - foo/bar
+  
+  - name: server SUB
+    addr:  ipc:///tmp/pub.pipe
+    tube_type: SUB
+    server: True
+    topics:
+      - foo/pub/#
+```
+
+```python
+# server.py
+import yaml
+from zmq_tubes.threads import TubeNode, TubeMessage
+
+
+def handler(request: TubeMessage):
+  print(request.payload)
+  if request.tube.tube_type_name == 'ROUTER': 
+    return request.create_response('response')
+
+
+def run():
+  with open('server.yml', 'r+') as fd:
+    schema = yaml.safe_load(fd)
+  node = TubeNode(schema=schema)
+  node.register_handler('foo/#', handler)
+  with node:
+    node.start().join()
+
+if __name__ == "__main__":
+    run()
+```
+
+```shell
+> python server.py
+message 1
+message 2
+```
+
+### YAML definition
+
+The yaml file starts with a root element `tubes`, which contains list of all our tube definitions.
+- `name` - string - name of the tube.
+- `addr` - string - connection or bind address in format `transport://address` (see more http://api.zeromq.org/2-1:zmq-connect)
+- `server` - bool - is this tube server side (bind to `addr`) or client side (connect to `addr`) 
+- `tube_type` - string - type of this tube (see more https://zguide.zeromq.org/docs/chapter2/#Messaging-Patterns)
+- `identity` - string - (optional) we can setup custom tube identity
+- `utf8_decoding` - bool - (default = True), if this is True, the payload is automatically UTF8 decode.
+- `sockopts` - dict - (optional) we can setup sockopts for this tube (see more http://api.zeromq.org/4-2:zmq-setsockopt)
+- `monitor` - string - (optional) bind address of tube monitor (see more [Debugging / Monitoring](#debugging-/-monitoring))
 
 
 ### Request / Response
@@ -113,7 +164,6 @@ await node.start()
 ```
 
 #### Client:
-
 ```python
 from zmq_tubes import Tube, TubeNode
 
@@ -129,8 +179,8 @@ response = await node.request('test/xxx', 'question')
 print(response.payload)
 # output: 'answer'
 ```
-
-
+The method `request` accepts the optional parameter `utf8_decoding`. When we set this parameter to `False` in previous
+example, the returned payload is not automatically decoded, we get bytes.
 
 
 ### Subscribe / Publisher

@@ -5,6 +5,7 @@ from threading import Thread
 import pytest
 import zmq
 
+from tests.helpers import wait_for_result2 as wait_for_result
 from zmq_tubes.threads import Tube, TubeNode, TubeMonitor
 from zmq_tubes.monitoring import get_schema, logs, simulate
 
@@ -15,13 +16,18 @@ TOPIC = 'req'
 
 @pytest.fixture
 def data():
-    return ['REQ10', 'REQ11']
+    return ['REQ10', 'REQ11'].copy()
+
+
+@pytest.fixture
+def result():
+    return []
 
 
 @pytest.fixture(params=[{'server': True}])
-def resp_node(data, request):
+def resp_node(result, request):
     def __process(req):
-        data.remove(req.payload)
+        result.append(req.payload)
         return req.create_response(f'RESP{req.payload[-2:]}')
 
     tube = Tube(
@@ -54,6 +60,11 @@ def req_node1(request):
     return node
 
 
+################################################################################
+#   Tests
+################################################################################
+
+
 def test_schema(resp_node):
     with resp_node:
         schema = get_schema(MONITOR)
@@ -67,27 +78,31 @@ def test_schema(resp_node):
     assert tube.get('monitor') == MONITOR
 
 
-def test_logging(resp_node, req_node1, data):
-
+def test_logging(resp_node, req_node1, data, result):
+    result.clear()
     buffer = io.BytesIO()
     th = Thread(target=lambda: logs(MONITOR, buffer, True, False), daemon=True)
     th.start()
 
     with resp_node:
-        for _ in range(len(data)):
-            res = req_node1.request(f"{TOPIC}/A", data[0])
+        while data:
+            res = req_node1.request(f"{TOPIC}/A", data.pop(0))
             assert 'RESP' in res.payload
+        assert wait_for_result(
+            lambda: len(result) == 2,
+            timeout=1
+        )
     th.join(timeout=2)
     lines = buffer.getvalue().decode().split('\n')
+    print(lines)
     assert len(lines) >= 4
     assert lines[0].endswith('REP < req/A REQ10')
     assert lines[1].endswith('REP > req/A RESP10')
     assert lines[2].endswith('REP < req/A REQ11')
     assert lines[3].endswith('REP > req/A RESP11')
-    assert len(data) == 0
 
 
-def test_simulation(resp_node, data):
+def test_simulation(resp_node, result):
     dump = io.BytesIO(
         b'0.017551183700561523 REP < req/A REQ10\n'
         b'0.00019621849060058594 REP > req/A RESP10\n'
@@ -101,8 +116,10 @@ def test_simulation(resp_node, data):
           addr: {ADDR}
           tube_type: REQ
     """)
-
+    result.clear()
     with resp_node:
         simulate(schema, dump, 1)
-
-    assert len(data) == 0
+        assert wait_for_result(
+            lambda: len(result) == 2,
+            timeout=1
+        )
