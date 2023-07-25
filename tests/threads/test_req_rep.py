@@ -14,9 +14,11 @@ TOPIC = 'req'
 def data():
     return ['REQ10', 'REQ11', 'REQ20', 'REQ21'].copy()
 
+
 @pytest.fixture
 def result():
     return []
+
 
 @pytest.fixture(params=[{'server': True, 'sleep': None, 'utf8_decoding': True}])
 def resp_node(result, request):
@@ -26,7 +28,7 @@ def resp_node(result, request):
             time.sleep(request.param['sleep'])
         return req.create_response(
             f'RESP{req.payload[-2:]}' if request.param['utf8_decoding'] else
-            b'RESP'+req.payload[-2:]
+            b'RESP' + req.payload[-2:]
         )
 
     tube = Tube(
@@ -111,7 +113,8 @@ def test_resp_reqs_on_same_node(resp_node, data, result):
 
 
 @pytest.mark.parametrize("resp_node",
-                         [({'server': True, 'sleep': 1, 'utf8_decoding': True})],
+                         [({'server': True, 'sleep': 1,
+                            'utf8_decoding': True})],
                          indirect=["resp_node"])
 def test_req_resp_timeout(resp_node, req_node1, data):
     with resp_node:

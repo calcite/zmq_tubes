@@ -19,9 +19,11 @@ TOPIC = 'req'
 def data():
     return ['REQ10', 'REQ11', 'REQ20', 'REQ21'].copy()
 
+
 @pytest.fixture
 def result():
     return []
+
 
 @pytest.fixture(params=[{'server': True, 'utf8_decoding': True}])
 def router_node(result, request):
@@ -70,6 +72,7 @@ def dealer_node(request):
 @pytest.mark.asyncio
 async def test_router_dealer(router_node, dealer_node, data, result):
     res = []
+
     async def __process(req):
         res.append(req.payload)
     dealer_node.register_handler(f"{TOPIC}/#", __process)
@@ -86,6 +89,7 @@ async def test_router_dealer(router_node, dealer_node, data, result):
 @pytest.mark.asyncio
 async def test_router_dealer_on_same_node(router_node, data, result):
     res = []
+
     async def __process(req):
         res.append(req.payload)
     tube = Tube(
@@ -114,6 +118,7 @@ async def test_router_dealer_on_same_node(router_node, data, result):
                          indirect=["router_node", "dealer_node"])
 async def test_router_dealer_bytes(router_node, dealer_node, result):
     res = []
+
     async def __process(req):
         res.append(req.payload)
     dealer_node.register_handler(f"{TOPIC}/#", __process)

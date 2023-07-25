@@ -33,6 +33,7 @@ def result():
 def result2():
     return []
 
+
 @pytest.fixture(params=[{'server': True, 'utf8_decoding': True}])
 def sub_node(result, request):
     async def __process(req):
@@ -122,7 +123,7 @@ async def test_sub_pubs(sub_node, pub_node1, pub_node2, data, data2,
 @pytest.mark.asyncio
 @pytest.mark.parametrize("sub_node,sub_node2,pub_node1",
                          [({'server': False, 'utf8_decoding': True},
-                           {'server': False, 'utf8_decoding':True},
+                           {'server': False, 'utf8_decoding': True},
                            {'server': True})],
                          indirect=["sub_node", "sub_node2", "pub_node1"])
 async def test_pub_subs(sub_node, sub_node2, pub_node1, data, result, result2):

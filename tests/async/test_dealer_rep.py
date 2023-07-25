@@ -1,7 +1,4 @@
 import sys
-
-import asyncio
-
 import zmq
 import pytest
 
@@ -33,6 +30,7 @@ def result():
 @pytest.fixture
 def result2():
     return []
+
 
 @pytest.fixture(params=[{'server': True, 'utf8_decoding': True}])
 def dealer_node(request):
@@ -105,6 +103,7 @@ async def test_dealer_reps(dealer_node, resp_node1, resp_node2, data, data2,
     One dealer send request to two resp servers
     """
     res = []
+
     async def __process(req):
         res.append(req.payload)
     dealer_node.register_handler(f"{TOPIC}/#", __process)
@@ -119,9 +118,11 @@ async def test_dealer_reps(dealer_node, resp_node1, resp_node2, data, data2,
             timeout=1
         )
 
+
 @pytest.mark.asyncio
 async def test_dealer_reps_on_same_node(dealer_node, data, result):
     res = []
+
     async def __process(req):
         res.append(req.payload)
     dealer_node.register_handler(f"{TOPIC}/#", __process, dealer_node.tubes[0])
@@ -156,6 +157,7 @@ async def test_dealer_reps_on_same_node(dealer_node, data, result):
                          indirect=["dealer_node", "resp_node1"])
 async def test_dealer_reps_bytes(dealer_node, resp_node1, result):
     res = []
+
     async def __process(req):
         res.append(req.payload)
     dealer_node.register_handler(f"{TOPIC}/#", __process)

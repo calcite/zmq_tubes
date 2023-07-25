@@ -24,9 +24,11 @@ def data():
 def data2():
     return ['REQ20', 'REQ21'].copy()
 
+
 @pytest.fixture
 def result():
     return []
+
 
 @pytest.fixture(params=[{'server': True, 'sleep': None, 'utf8_decoding': True}])
 def resp_node(result, request):
@@ -36,7 +38,7 @@ def resp_node(result, request):
             await asyncio.sleep(request.param['sleep'])
         return req.create_response(
             f'RESP{req.payload[-2:]}' if request.param['utf8_decoding'] else
-            b'RESP'+req.payload[-2:]
+            b'RESP' + req.payload[-2:]
         )
 
     tube = Tube(
@@ -91,6 +93,7 @@ def req_node2(request):
 async def test_resp_reqs(resp_node, req_node1, req_node2, data, data2, result):
     res = []
     result.clear()
+
     async def step(node, d, p, delay=None):
         if delay:
             await asyncio.sleep(delay)  # distance between tasks
@@ -129,9 +132,11 @@ async def test_req_resp_on_same_node(resp_node, data, result):
             timeout=1
         )
 
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("resp_node",
-                         [({'server': True, 'sleep': 1, 'utf8_decoding': True})],
+                         [({'server': True, 'sleep': 1,
+                            'utf8_decoding': True})],
                          indirect=["resp_node"])
 async def test_req_resp_timeout(resp_node, req_node1, data):
     async with resp_node:

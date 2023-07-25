@@ -1,7 +1,7 @@
 [flake8]
 max-line-length = 80
 ignore =
-    E701
+    E701, E131, W504
 exclude =
     .git,
     .venv,

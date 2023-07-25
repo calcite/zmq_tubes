@@ -1,5 +1,4 @@
 import pytest
-import time
 import zmq
 
 from tests.helpers import wait_for_result2
@@ -27,6 +26,7 @@ def result():
 @pytest.fixture
 def result2():
     return []
+
 
 @pytest.fixture(params=[{'server': True, 'utf8_decoding': True}])
 def dealer_node(request):
@@ -98,6 +98,7 @@ def test_dealer_reps(dealer_node, resp_node1, resp_node2, data, data2,
     One dealer send request to two resp servers
     """
     res = []
+
     def __process(req):
         res.append(req.payload)
     dealer_node.register_handler(f"{TOPIC}/#", __process)
@@ -115,6 +116,7 @@ def test_dealer_reps(dealer_node, resp_node1, resp_node2, data, data2,
 
 def test_dealer_reps_on_same_node(dealer_node, data, result):
     res = []
+
     def __process(req):
         res.append(req.payload)
     dealer_node.register_handler(f"{TOPIC}/#", __process, dealer_node.tubes[0])
@@ -148,6 +150,7 @@ def test_dealer_reps_on_same_node(dealer_node, data, result):
                          indirect=["dealer_node", "resp_node1"])
 def test_dealer_reps_bytes(dealer_node, resp_node1, result):
     res = []
+
     def __process(req):
         res.append(req.payload)
 

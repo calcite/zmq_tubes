@@ -1,7 +1,5 @@
 import sys
 
-import asyncio
-
 import zmq
 import pytest
 
@@ -70,6 +68,7 @@ def dealer_node2(request):
 @pytest.mark.asyncio
 async def test_dealer_dealer(dealer_node1, dealer_node2, data, result):
     res = []
+
     async def __process(req):
         res.append(req.payload)
     dealer_node2.register_handler(f"{TOPIC}/#", __process)
@@ -82,9 +81,11 @@ async def test_dealer_dealer(dealer_node1, dealer_node2, data, result):
             timeout=1
         )
 
+
 @pytest.mark.asyncio
 async def test_dealer_dealer_on_same_node(dealer_node1, data, result):
     res = []
+
     async def __process(req):
         res.append(req.payload)
     result.clear()
@@ -114,6 +115,7 @@ async def test_dealer_dealer_on_same_node(dealer_node1, data, result):
                          indirect=["dealer_node1", "dealer_node2"])
 async def test_dealer_reps_bytes(dealer_node1, dealer_node2, result):
     res = []
+
     async def __process(req):
         res.append(req.payload)
     dealer_node2.register_handler(f"{TOPIC}/#", __process)

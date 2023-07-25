@@ -17,13 +17,16 @@ TOPIC = 'req'
 def data():
     return ['REQ10', 'REQ11'].copy()
 
+
 @pytest.fixture
 def data2():
     return ['REQ20', 'REQ21'].copy()
 
+
 @pytest.fixture
 def result():
     return []
+
 
 @pytest.fixture(params=[{'server': True, 'utf8_decoding': True}])
 def router_node(result, request):
@@ -87,6 +90,7 @@ def req_node2(request):
 async def test_router_reqs(router_node, req_node1, req_node2, data, data2,
                            result):
     res = []
+
     async def step(node, d, p, delay=None):
         if delay:
             await asyncio.sleep(delay)  # distance between tasks

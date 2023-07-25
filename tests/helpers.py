@@ -8,12 +8,13 @@ from threading import Thread
 async def wait_for_result(condition, timeout, params=None):
     if not params:
         params = []
+
     async def __test():
         while True:
             try:
                 if condition(*params):
                     return
-            except:
+            except Exception:
                 pass
             await asyncio.sleep(0.1)
     try:
@@ -30,7 +31,7 @@ def wait_for_result2(condition, timeout, params=None):
         try:
             if condition(*params):
                 return True
-        except:
+        except Exception:
             pass
         time.sleep(0.1)
         timeout -= 0.1

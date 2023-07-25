@@ -30,6 +30,7 @@ def result():
 def result2():
     return []
 
+
 @pytest.fixture(params=[{'server': True, 'utf8_decoding': True}])
 def sub_node(result, request):
     def __process(req):
@@ -130,7 +131,7 @@ def test_pub_subs(sub_node, sub_node2, pub_node1, data, data2, result, result2):
     """
     @wrapp
     def __process(node, p, d):
-       while d:
+        while d:
             node.publish(f"{TOPIC}/{p}", d.pop())
 
     result.clear()
