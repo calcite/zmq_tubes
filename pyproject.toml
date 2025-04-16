@@ -12,7 +12,7 @@ classifiers = [
     "Topic :: System :: Networking",
     "Topic :: Software Development :: Libraries :: Python Modules"
 ]
-requires-python = ">=3.6"
+requires-python = ">=3.9,<4.0"
 dependencies = [
     "pyzmq"
 ]
@@ -21,8 +21,7 @@ dependencies = [
 dev = [
     "pytest>=6.2.5",
     "PyYAML>=5.4.1,<7.0",
-    "pytest-asyncio; python_version >= '3.7'",
-    "pytest-asyncio<0.19.0; python_version < '3.7'",
+    "pytest-asyncio"
 ]
 
 [project.urls]
