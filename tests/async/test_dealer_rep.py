@@ -112,7 +112,6 @@ async def test_dealer_reps(dealer_node, resp_node1, resp_node2, data, data2,
     result.clear()
     result2.clear()
     async with dealer_node, resp_node1, resp_node2:
-        await asyncio.sleep(0.3)
         while data:
             await dealer_node.send(f"{TOPIC}/A", data.pop())
             await dealer_node.send(f"{TOPIC}/B", data2.pop())
