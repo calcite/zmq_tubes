@@ -1,4 +1,6 @@
 __pycache__
+__pypackages__
+.pdm-python
 *.pyc
 .env/
 .idea/

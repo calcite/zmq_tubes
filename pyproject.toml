@@ -1,31 +1,37 @@
-[tool.poetry]
+[project]
 name = "zmq_tubes"
 version = "1.14.0"
-license = "MIT"
+description = "Wrapper for ZMQ communication."
 readme = "README.md"
-description = "Wrapper for ZMQ comunication."
-authors = ["Martin Korbel <mkorbel@alps.cz>"]
-homepage = "https://github.com/calcite/zmq_tubes"
-repository = "https://github.com/calcite/zmq_tubes"
-documentation = "https://github.com/calcite/zmq_tubes"
-
+license = { text = "MIT" }
+authors = [
+     {name = "Martin Korbel", email = "mkorbel@alps.cz"},
+]
 keywords = ["zmq", "mqtt", "tubes", "zmq_tubes"]
 classifiers = [
     "Topic :: System :: Networking",
     "Topic :: Software Development :: Libraries :: Python Modules"
 ]
+requires-python = ">=3.6"
+dependencies = [
+    "pyzmq"
+]
 
-[tool.poetry.dependencies]
-python = "^3.6"
-pyzmq = "*"
+[project.optional-dependencies]
+dev = [
+    "pytest>=6.2.5",
+    "PyYAML>=5.4.1,<7.0",
+    "pytest-asyncio; python_version >= '3.7'",
+    "pytest-asyncio<0.19.0; python_version < '3.7'",
+]
 
+[project.urls]
+homepage = "https://github.com/calcite/zmq_tubes"
+repository = "https://github.com/calcite/zmq_tubes"
+documentation = "https://github.com/calcite/zmq_tubes"
 
-[tool.poetry.dev-dependencies]
-pytest = "^6.2.5"
-PyYAML = "^5.4.1 || ^6.0"
-pytest-asyncio = [{ version = "^0.19.0", python = "^3.7" },
-                  { version = "^0.16.0", python = "^3.6" }]
-
+[tool.pdm.scripts]
+zmqtube-monitor = "zmq_tubes.monitoring:main"
 
 [tool.pytest.ini_options]
 testpaths = [
@@ -33,8 +39,5 @@ testpaths = [
 ]
 
 [build-system]
-requires = ["poetry-core>=1.0.0"]
-build-backend = "poetry.core.masonry.api"
-
-[tool.poetry.scripts]
-zmqtube-monitor = "zmq_tubes.monitoring:main"
+requires = ["pdm-backend"]
+build-backend = "pdm.backend"

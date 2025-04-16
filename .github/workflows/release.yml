@@ -4,57 +4,21 @@ name: Release
 
 # Controls when the workflow will run
 on:
-  workflow_dispatch:
+  release:
+    types: [published]
 
 
 jobs:
-
-  build:
+  pypi-publish:
+    name: upload release to PyPI
     runs-on: ubuntu-latest
-    if: github.ref_name == 'master'
+    permissions:
+      contents: read
+      id-token: write
     steps:
-      - name: Setup Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: 3.9
+      - uses: actions/checkout@v4
 
-      - uses: actions/checkout@master
+      - uses: pdm-project/setup-pdm@v4
 
-      - name: Install poetry
-        run: pip install poetry
-
-      - name: Configure poetry
-        shell: bash
-        run: poetry config virtualenvs.in-project true
-
-      - name: Update version
-        shell: bash
-        run: |
-          poetry version minor
-          VERSION="$(poetry version -s)"
-          echo "VERSION=${VERSION}" >> $GITHUB_ENV
-          git tag "v${VERSION}"
-
-      - name: Publish to PyPI
-        shell: bash
-        env:
-          POETRY_PYPI_TOKEN_PYPI: ${{ secrets.PYPI_TOKEN }}
-        run: |
-         poetry config http-basic.pypi "__token__" "$POETRY_PYPI_TOKEN_PYPI"
-         poetry publish --build
-
-      - name: Commit & Push changes
-        uses: Andro999b/push@v1.3
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          files: pyproject.toml
-          message: 'bump version to ${env.VERSION}'
-          tags: True
-
-      - name: Create Release
-        uses: ncipollo/release-action@v1
-        with:
-          generateReleaseNotes: true
-          name: "v${{ env.VERSION }}"
-          tag: "v${{ env.VERSION }}"
-          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish package distributions to PyPI
+        run: pdm publish
