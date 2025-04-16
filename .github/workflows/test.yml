@@ -29,8 +29,8 @@ jobs:
 
       - name: Run flake8
         uses: py-actions/flake8@v2
-        with:
-          config-file: .flake8
+        # with:
+        #   config-file: .flake8
 
   tests:
     needs: flake8
@@ -50,7 +50,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pdm config set python.use_venv False
+          pdm config python.use_venv False
           pdm install -G dev
 
 
