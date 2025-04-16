@@ -5,7 +5,7 @@ from threading import Thread, Lock, Event, current_thread
 import zmq
 from zmq import Poller, Context
 
-from .manager import TubeMessage, Tube as AsyncTube, TubeNode as AsyncTubeNode,\
+from .manager import TubeMessage, Tube as AsyncTube, TubeNode as AsyncTubeNode, \
     TubeMethodNotSupported, TubeMessageError, TubeMessageTimeout, \
     TubeMonitor as AsyncTubeMonitor, TubeTopicNotConfigured, TubeConnectionError
 

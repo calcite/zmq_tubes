@@ -1,5 +1,5 @@
 [flake8]
-max-line-length = 80
+max-line-length = 120
 ignore =
     E701, E131, W504
 exclude =
@@ -7,4 +7,5 @@ exclude =
     .venv,
     .pytest_cache,
     __pychache__,
+    __pypackages__,
     tmp
