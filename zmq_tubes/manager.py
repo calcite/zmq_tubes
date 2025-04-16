@@ -1,5 +1,7 @@
 import time
 
+import sys
+
 import asyncio
 import json
 import logging
@@ -19,6 +21,8 @@ class TubeMessageTimeout(TubeException): pass       # flake8: E701
 class TubeMethodNotSupported(TubeException): pass   # flake8: E701
 class TubeConnectionError(TubeException): pass      # flake8: E701
 
+
+LESS38 = sys.version_info < (3, 8)
 
 SOCKET_OPTION_VALUE_TO_NAME = {
     member.value: name for name, member in SocketOption.__members__.items()
@@ -588,7 +592,7 @@ class TubeNode:
 
     async def __aenter__(self):
         await self.connect()
-        args = {'name': 'zmq/main'}
+        args = {} if LESS38 else {'name': 'zmq/main'}
         asyncio.create_task(self.start(), **args)
         return self
 
@@ -831,21 +835,21 @@ class TubeNode:
                         )
                     continue
                 if tube.tube_type == zmq.SUB:
-                    args = {'name': 'zmq/sub'}
+                    args = {} if LESS38 else {'name': 'zmq/sub'}
                     for callback in callbacks:
                         loop.create_task(callback(request), **args)
                 elif tube.tube_type == zmq.REP:
-                    args = {'name': 'zmq/rep'}
+                    args = {} if LESS38 else {'name': 'zmq/rep'}
                     loop.create_task(
                         _callback_wrapper(callbacks[-1], request),
                         **args)
                 elif tube.tube_type == zmq.ROUTER:
-                    args = {'name': 'zmq/router'}
+                    args = {} if LESS38 else {'name': 'zmq/router'}
                     loop.create_task(
                         _callback_wrapper(callbacks[-1], request),
                         **args
                     )
                 elif tube.tube_type == zmq.DEALER:
-                    args = {'name': 'zmq/dealer'}
+                    args = {} if LESS38 else {'name': 'zmq/dealer'}
                     loop.create_task(callbacks[-1](request), **args)
         self.logger.info("The main loop was ended.")

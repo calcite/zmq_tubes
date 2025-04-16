@@ -60,7 +60,6 @@ def dealer_node2(request):
 ################################################################################
 
 
-@pytest.mark.asyncio
 def test_dealer_dealer(dealer_node1, dealer_node2, data, result):
     res = []
 
