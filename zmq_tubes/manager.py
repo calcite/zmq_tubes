@@ -594,7 +594,7 @@ class TubeNode:
         await self.connect()
         args = {} if LESS38 else {'name': 'zmq/main'}
         asyncio.create_task(self.start(), **args)
-        while not self._stop_main_loop:
+        while self._stop_main_loop:
             await asyncio.sleep(0.1)
         return self
 
