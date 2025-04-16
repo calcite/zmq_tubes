@@ -802,12 +802,12 @@ class TubeNode:
         for monitor in self.__monitors:
             poller.register(monitor.raw_socket, zmq.POLLIN)
             run_this_thread = True
+        self._stop_main_loop = False
         if not run_this_thread:
             self.logger.debug("The main loop is disabled, "
                               "There is not registered any supported tube.")
             return
         self.logger.info("The main loop was started.")
-        self._stop_main_loop = False
         while not self._stop_main_loop:
             try:
                 events = await poller.poll(timeout=100)
@@ -818,7 +818,7 @@ class TubeNode:
             for event in events:
                 raw_socket = event[0]
                 if isinstance(raw_socket, object) and \
-                        'monitor' in raw_socket.__dict__:
+                        'monitor' in getattr(raw_socket, '__dict__', {}):
                     monitor = raw_socket.__dict__['monitor']
                     await monitor.process()
                     continue
