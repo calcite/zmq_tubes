@@ -1,7 +1,5 @@
 import time
 
-import sys
-
 import asyncio
 import json
 import logging
@@ -20,7 +18,6 @@ class TubeMessageError(TubeException): pass         # flake8: E701
 class TubeMessageTimeout(TubeException): pass       # flake8: E701
 class TubeMethodNotSupported(TubeException): pass   # flake8: E701
 class TubeConnectionError(TubeException): pass      # flake8: E701
-
 
 
 SOCKET_OPTION_VALUE_TO_NAME = {
