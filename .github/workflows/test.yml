@@ -47,8 +47,12 @@ jobs:
           architecture: x64
           pdm-version: latest
 
+
       - name: Install dependencies
-        run: pdm install -G dev
+        run: |
+          pdm config set env.use_venv false
+          pdm install -G dev
+
 
       - name: Run pytest
         shell: bash
