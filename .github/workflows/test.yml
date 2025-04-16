@@ -29,12 +29,10 @@ jobs:
 
       - name: Run flake8
         uses: py-actions/flake8@v2
-        # with:
-        #   config-file: .flake8
 
   tests-old:
     needs: flake8
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-20.04
     strategy:
       matrix:
         python-version: [ "3.6", "3.7", "3.8", "3.9" ]

@@ -587,13 +587,15 @@ class TubeNode:
         self.__monitors = set()
         if schema:
             self.parse_schema(schema)
-        self._stop_main_loop = False
+        self._stop_main_loop = True
         self.warning_not_mach_topic = warning_not_mach_topic
 
     async def __aenter__(self):
         await self.connect()
         args = {} if LESS38 else {'name': 'zmq/main'}
         asyncio.create_task(self.start(), **args)
+        while not self._stop_main_loop:
+            await asyncio.sleep(0.1)
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
@@ -805,6 +807,7 @@ class TubeNode:
                               "There is not registered any supported tube.")
             return
         self.logger.info("The main loop was started.")
+        self._stop_main_loop = False
         while not self._stop_main_loop:
             try:
                 events = await poller.poll(timeout=100)
