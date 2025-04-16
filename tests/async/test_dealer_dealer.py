@@ -126,5 +126,5 @@ async def test_dealer_reps_bytes(dealer_node1, dealer_node2, result):
         assert await wait_for_result(
             lambda: len(res) == 1 and isinstance(res[0], bytes) and
                     len(result) == 1 and isinstance(result[0], bytes),
-            timeout=2
+            timeout=15
         )

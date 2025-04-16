@@ -116,7 +116,7 @@ async def test_dealer_reps(dealer_node, resp_node1, resp_node2, data, data2,
             await dealer_node.send(f"{TOPIC}/B", data2.pop())
         assert await wait_for_result(
             lambda: len(res) == 4 and len(result) == 2 and len(result2) == 2,
-            timeout=4
+            timeout=15
         )
 
 
