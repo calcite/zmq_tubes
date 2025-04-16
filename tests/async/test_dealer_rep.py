@@ -1,3 +1,4 @@
+import asyncio
 import sys
 import zmq
 import pytest
@@ -105,6 +106,7 @@ async def test_dealer_reps(dealer_node, resp_node1, resp_node2, data, data2,
     res = []
 
     async def __process(req):
+        print(f"REQ: {req.payload}")
         res.append(req.payload)
     dealer_node.register_handler(f"{TOPIC}/#", __process)
     result.clear()
@@ -115,7 +117,7 @@ async def test_dealer_reps(dealer_node, resp_node1, resp_node2, data, data2,
             await dealer_node.send(f"{TOPIC}/B", data2.pop())
         assert await wait_for_result(
             lambda: len(res) == 4 and len(result) == 2 and len(result2) == 2,
-            timeout=5
+            timeout=4
         )
 
 
