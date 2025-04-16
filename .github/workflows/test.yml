@@ -50,7 +50,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pdm config set env.use_venv false
+          pdm config set python.use_venv False
           pdm install -G dev
 
 
