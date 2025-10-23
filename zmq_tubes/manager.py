@@ -22,6 +22,7 @@ class TubeMethodNotSupported(TubeException): pass   # flake8: E701
 class TubeConnectionError(TubeException): pass      # flake8: E701
 
 
+CTX = Context.instance()
 LESS38 = sys.version_info < (3, 8)
 
 SOCKET_OPTION_VALUE_TO_NAME = {
@@ -144,7 +145,7 @@ class Tube:
         """
         self.logger = logging.getLogger(self.__class__.__name__)
         self._socket: Socket = None
-        self.context = Context().instance()
+        self.context = CTX
         self.tube_info = kwargs
         self.is_closed = False
         self._sockopts = {}

@@ -1,3 +1,4 @@
+import queue
 import time
 
 import concurrent
@@ -11,6 +12,9 @@ from .manager import TubeMessage, Tube as AsyncTube, TubeNode as AsyncTubeNode, 
 
 
 class TubeThreadDeadLock(Exception): pass
+
+
+result_queue = queue.Queue()
 
 
 class StoppableThread(Thread):
@@ -79,20 +83,20 @@ class TubeMonitor(AsyncTubeMonitor):
 
 
 class Tube(AsyncTube):
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self.lock = Lock()
-        self.context = Context().instance()
+    # def __init__(self, **kwargs):
+    #     super().__init__(**kwargs)
+    #     self.lock = Lock()
+    #     self.context = Context().instance()
 
     def send(self, *args, **kwargs):
         if args:
             if isinstance(args[0], TubeMessage):
-                return self.__send_message(*args, **kwargs)
+                result_queue.put((self, args[0]))
             elif isinstance(args[0], str):
                 return self.__send_payload(*args, **kwargs)
         elif kwargs:
             if 'message' in kwargs:
-                return self.__send_message(**kwargs)
+                result_queue.put((self, kwargs['message']))
             elif 'topic' in kwargs:
                 return self.__send_payload(**kwargs)
         raise NotImplementedError("Unknown type of topic")
@@ -110,9 +114,9 @@ class Tube(AsyncTube):
             topic=topic,
             raw_socket=raw_socket if raw_socket else self.raw_socket
         )
-        self.__send_message(message)
+        result_queue.put((self, message))
 
-    def __send_message(self, message: TubeMessage):
+    def internal_send_message(self, message: TubeMessage):
         """
         Send message.
         :param message - TubeMessage
@@ -122,9 +126,6 @@ class Tube(AsyncTube):
         if not message.raw_socket or message.raw_socket.closed:
             raise TubeConnectionError(
                 f'The tube {message.tube.name} is already closed.')
-        if not self.lock.acquire(timeout=10):
-            raise TubeThreadDeadLock(f"The tube '{self.name}' waits more then "
-                                     f"10s for access to socket.")
         try:
             message.raw_socket.send_multipart(raw_msg)
             try:
@@ -138,8 +139,6 @@ class Tube(AsyncTube):
         except (TypeError, zmq.ZMQError) as ex:
             raise TubeMessageError(
                 f"The message '{message}' does not be sent.") from ex
-        finally:
-            self.lock.release()
 
     def request(self, *args, post_send_callback=None, **kwargs) -> TubeMessage:
         """
@@ -192,7 +191,7 @@ class Tube(AsyncTube):
                 f"can request topic."
             )
         try:
-            self.send(request)
+            self.internal_send_message(request)
             if post_send_callback:
                 post_send_callback(request)
             if request.raw_socket.poll(timeout * 1000) != 0:
@@ -218,13 +217,7 @@ class Tube(AsyncTube):
     def receive_data(self, raw_socket=None, timeout=3, utf8_decoding=None):
         if not raw_socket:
             raw_socket = self.raw_socket
-        if not self.lock.acquire(timeout=timeout):
-            raise TubeThreadDeadLock(f"The tube '{self.name}' waits more then "
-                                     f"{timeout}s for access to socket.")
-        try:
-            raw_data = raw_socket.recv_multipart()
-        finally:
-            self.lock.release()
+        raw_data = raw_socket.recv_multipart()
         self.logger.debug(
             f"Received (tube {self.name}): {raw_data}")
         message = TubeMessage(tube=self, raw_socket=raw_socket)
@@ -409,6 +402,9 @@ class TubeNode(AsyncTubeNode):
                             # The topic is not registered for this node.
                             continue
                         executor.submit(_one_event, request)
+                    while not result_queue.empty():
+                        tube, response = result_queue.get()
+                        tube.internal_send_message(response)
             self.logger.info("The main process was ended.")
 
         if not self.main_thread:
