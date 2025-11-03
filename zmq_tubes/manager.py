@@ -7,7 +7,7 @@ import asyncio
 import json
 import logging
 from collections.abc import Callable
-from typing import List
+from typing import List, Tuple
 
 import zmq
 from zmq import SocketOption
@@ -608,7 +608,7 @@ class TubeNode:
         await self.close()
 
     @property
-    def tubes(self) -> [Tube]:
+    def tubes(self) -> List[Tube]:
         """
         returns a list of all registered tubes
         """
@@ -673,7 +673,7 @@ class TubeNode:
             res = res[-1]
         return res
 
-    def filter_tube_by_topic(self, topic: str, types=None) -> [(str, Tube)]:
+    def filter_tube_by_topic(self, topic: str, types=None) -> List[Tuple[str, Tube]]:
         tubes = self._tubes.filter(topic)
         res = {}
         for top, tts in tubes:
@@ -823,8 +823,9 @@ class TubeNode:
             # print(events)
             for event in events:
                 raw_socket = event[0]
-                if isinstance(raw_socket, object) and \
-                        'monitor' in getattr(raw_socket, '__dict__', {}):
+                if not isinstance(raw_socket, object):
+                    continue
+                if 'monitor' in getattr(raw_socket, '__dict__', {}):
                     monitor = raw_socket.__dict__['monitor']
                     await monitor.process()
                     continue
