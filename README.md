@@ -13,7 +13,7 @@ The whole system is hierarchical, based on topics
   Some types of tubes require a response in this format.
 - **Tube** - This class wraps a ZMQ socket.
   It represents a connection between client and server.
-- **TubeMonitor** - The class can sniff of the ZMQTube communication.
+- **TubeMonitor** - The class can sniff of the ZMQTube communication. (Supported only with Asyncio version).
 - **TubeNode** - This represents an application interface for communication via tubes.
 
 

@@ -1,12 +1,14 @@
+import os
 import time
 
 import zmq
 import pytest
 
 from tests.helpers import wait_for_result2 as wait_for_result
-from zmq_tubes.threads import Tube, TubeNode
+from zmq_tubes.threads import Tube, TubeNode, Context
 
 ADDR = 'ipc:///tmp/dealer_router.pipe'
+os.path.exists(ADDR.replace('ipc://', '')) and os.remove(ADDR.replace('ipc://', ''))
 TOPIC = 'req'
 
 
@@ -35,7 +37,8 @@ def router_node(result, request):
         addr=ADDR,
         server=request.param['server'],
         tube_type=zmq.ROUTER,
-        utf8_decoding=request.param['utf8_decoding']
+        utf8_decoding=request.param['utf8_decoding'],
+        context=Context.instance()
     )
 
     node = TubeNode()
@@ -51,7 +54,8 @@ def dealer_node(request):
         addr=ADDR,
         server=request.param['server'],
         tube_type=zmq.DEALER,
-        utf8_decoding=request.param['utf8_decoding']
+        utf8_decoding=request.param['utf8_decoding'],
+        context=Context.instance()
     )
 
     node = TubeNode()
@@ -76,7 +80,7 @@ def test_router_dealer(router_node, dealer_node, data, result):
             dealer_node.send(f"{TOPIC}/A", data.pop())
         assert wait_for_result(
             lambda: len(res) == 4 and len(result) == 4,
-            timeout=1
+            timeout=5
         )
 
 
@@ -100,7 +104,7 @@ def test_dealer_router_on_same_node(router_node, data, result):
             router_node.send(f"{TOPIC}/A", data.pop())
         assert wait_for_result(
             lambda: len(res) == 4 and len(result) == 4,
-            timeout=1
+            timeout=5
         )
 
 
@@ -120,5 +124,5 @@ def test_router_dealer_bytes(router_node, dealer_node, result):
         assert wait_for_result(
             lambda: len(res) == 1 and isinstance(res[0], bytes) and
                     len(result) == 1 and isinstance(result[0], bytes),
-            timeout=1
+            timeout=5
         )

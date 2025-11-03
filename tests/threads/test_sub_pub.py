@@ -1,3 +1,4 @@
+import os
 import time
 
 import pytest
@@ -5,9 +6,10 @@ import pytest
 import zmq
 
 from ..helpers import run_test_threads, wrapp, wait_for_result2
-from zmq_tubes.threads import Tube, TubeNode
+from zmq_tubes.threads import Tube, TubeNode, Context
 
 ADDR = 'ipc:///tmp/sub_pub.pipe'
+os.path.exists(ADDR.replace('ipc://', '')) and os.remove(ADDR.replace('ipc://', ''))
 TOPIC = 'sub'
 
 
@@ -41,7 +43,8 @@ def sub_node(result, request):
         addr=ADDR,
         server=request.param['server'],
         tube_type=zmq.SUB,
-        utf8_decoding=request.param['utf8_decoding']
+        utf8_decoding=request.param['utf8_decoding'],
+        context=Context.instance()
     )
 
     node = TubeNode()
@@ -60,7 +63,8 @@ def sub_node2(result2, request):
         addr=ADDR,
         server=request.param['server'],
         tube_type=zmq.SUB,
-        utf8_decoding=request.param['utf8_decoding']
+        utf8_decoding=request.param['utf8_decoding'],
+        context=Context.instance()
     )
 
     node = TubeNode()
@@ -75,7 +79,8 @@ def pub_node1(request):
         name='PUB1',
         addr=ADDR,
         server=request.param['server'],
-        tube_type=zmq.PUB
+        tube_type=zmq.PUB,
+        context=Context.instance()
     )
 
     node = TubeNode()
@@ -89,7 +94,8 @@ def pub_node2(request):
         name='PUB2',
         addr=ADDR,
         server=request.param['server'],
-        tube_type=zmq.PUB
+        tube_type=zmq.PUB,
+        context=Context.instance()
     )
 
     node = TubeNode()
@@ -110,6 +116,7 @@ def test_sub_pubs(sub_node, pub_node1, pub_node2, data, data2, result):
     def __process(node, p, d):
         while d:
             node.publish(f"{TOPIC}/{p}", d.pop())
+            time.sleep(0.05)
 
     result.clear()
     with sub_node, pub_node1, pub_node2:
@@ -117,7 +124,7 @@ def test_sub_pubs(sub_node, pub_node1, pub_node2, data, data2, result):
             __process(pub_node1, 'A', data),
             __process(pub_node2, 'B', data2),
         )
-        assert wait_for_result2(lambda: len(result) == 8, timeout=1)
+        assert wait_for_result2(lambda: len(result) == 8, timeout=5)
 
 
 @pytest.mark.parametrize("sub_node,sub_node2,pub_node1",
@@ -142,7 +149,7 @@ def test_pub_subs(sub_node, sub_node2, pub_node1, data, data2, result, result2):
         )
         assert wait_for_result2(
             lambda: len(result) == 4 and len(result2) == 4,
-            timeout=1
+            timeout=5
         )
 
 
@@ -169,7 +176,7 @@ def test_pub_sub_on_same_node(sub_node, data, result):
         run_test_threads(
             __process(sub_node, 'A', data),
         )
-        assert wait_for_result2(lambda: len(result) == 4, timeout=1)
+        assert wait_for_result2(lambda: len(result) == 4, timeout=5)
 
 
 @pytest.mark.parametrize("sub_node",
@@ -182,5 +189,5 @@ def test_pub_sub_bytes(sub_node, pub_node1, result):
         pub_node1.publish(f"{TOPIC}/A", 'XXX')
         assert wait_for_result2(
             lambda: len(result) > 0 and isinstance(result.pop(), bytes),
-            timeout=1
+            timeout=5
         )

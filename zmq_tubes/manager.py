@@ -1,3 +1,4 @@
+import os
 import time
 
 import sys
@@ -6,6 +7,7 @@ import asyncio
 import json
 import logging
 from collections.abc import Callable
+from typing import List
 
 import zmq
 from zmq import SocketOption
@@ -22,6 +24,7 @@ class TubeMethodNotSupported(TubeException): pass   # flake8: E701
 class TubeConnectionError(TubeException): pass      # flake8: E701
 
 
+CTX = Context.instance()
 LESS38 = sys.version_info < (3, 8)
 
 SOCKET_OPTION_VALUE_TO_NAME = {
@@ -144,7 +147,7 @@ class Tube:
         """
         self.logger = logging.getLogger(self.__class__.__name__)
         self._socket: Socket = None
-        self.context = Context().instance()
+        self.context = kwargs.get('context', CTX)
         self.tube_info = kwargs
         self.is_closed = False
         self._sockopts = {}
@@ -153,6 +156,8 @@ class Tube:
         self.name = kwargs.get('name')
         self._server = \
             str(kwargs.get('server', '')).lower() in ('yes', 'true', '1')
+        if self._server and os.path.exists(self.addr.replace('ipc://', '')):
+            os.remove(self.addr.replace('ipc://', ''))
         self.tube_type = kwargs.get('tube_type')
         self.identity = kwargs.get('identity')
         self.monitor = kwargs.get('monitor')
@@ -485,12 +490,12 @@ class TubeMonitor:
             cls.CACHE[addr] = super(TubeMonitor, cls).__new__(cls)
         return cls.CACHE[addr]
 
-    def __init__(self, addr: str):
+    def __init__(self, addr: str, **kwargs):
         # Because singleton execute __init__ for each try.
         if hasattr(self, 'addr') and self.addr:
             return
         self.addr = addr
-        self.context = Context.instance()
+        self.context = kwargs.get('context', CTX)
         self.raw_socket = None
         self.enabled = False
         self.node = None
@@ -687,10 +692,11 @@ class TubeNode:
                 return tube
         return None
 
-    def register_tube(self, tube: Tube, topics: [str]):
+    def register_tube(self, tube: Tube, topics: List[str]):
         """
         registers list of topics to the Tube
         """
+        tube.node = self
         if isinstance(topics, str):
             topics = [topics]
         for topic in topics:

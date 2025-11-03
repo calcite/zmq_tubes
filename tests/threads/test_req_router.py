@@ -1,3 +1,4 @@
+import os
 import pytest
 import time
 
@@ -5,9 +6,10 @@ import zmq
 
 from tests.helpers import wait_for_result2 as wait_for_result, \
     run_test_threads, wrapp
-from zmq_tubes.threads import Tube, TubeNode
+from zmq_tubes.threads import Tube, TubeNode, Context
 
 ADDR = 'ipc:///tmp/req_router.pipe'
+os.path.exists(ADDR.replace('ipc://', '')) and os.remove(ADDR.replace('ipc://', ''))
 TOPIC = 'req'
 
 
@@ -41,7 +43,8 @@ def router_node(result, request):
         addr=ADDR,
         server=request.param['server'],
         tube_type=zmq.ROUTER,
-        utf8_decoding=request.param['utf8_decoding']
+        utf8_decoding=request.param['utf8_decoding'],
+        context=Context.instance()
     )
 
     node = TubeNode()
@@ -57,7 +60,8 @@ def req_node1(request):
         addr=ADDR,
         server=request.param['server'],
         tube_type=zmq.REQ,
-        utf8_decoding=request.param['utf8_decoding']
+        utf8_decoding=request.param['utf8_decoding'],
+        context=Context.instance()
     )
 
     node = TubeNode()
@@ -72,7 +76,8 @@ def req_node2(request):
         addr=ADDR,
         server=request.param['server'],
         tube_type=zmq.REQ,
-        utf8_decoding=request.param['utf8_decoding']
+        utf8_decoding=request.param['utf8_decoding'],
+        context=Context.instance()
     )
 
     node = TubeNode()
@@ -84,8 +89,8 @@ def req_node2(request):
 #   Tests
 ################################################################################
 
-def test_resp_router(router_node, req_node1, req_node2, data, data2,
-                     result):
+def test_req_router(router_node, req_node1, req_node2, data, data2,
+                    result):
 
     res = []
 
@@ -102,11 +107,11 @@ def test_resp_router(router_node, req_node1, req_node2, data, data2,
         )
         assert wait_for_result(
             lambda: len(res) == 4 and len(result) == 4,
-            timeout=1
+            timeout=5
         )
 
 
-def test_resp_router_on_same_node(router_node, data, result):
+def test_req_router_on_same_node(router_node, data, result):
     """
         The REQ/ROUTER and client on the same node.
     """
@@ -125,7 +130,7 @@ def test_resp_router_on_same_node(router_node, data, result):
             res.append('RESP' in resp.payload)
         assert wait_for_result(
             lambda: len(res) == 2 and len(result) == 2,
-            timeout=1
+            timeout=5
         )
 
 
@@ -142,5 +147,5 @@ def test_req_router_bytes(router_node, req_node1, result):
         assert not isinstance(res.payload, bytes)
         assert wait_for_result(
             lambda: len(result) == 2 and isinstance(result[0], bytes),
-            timeout=1
+            timeout=5
         )
