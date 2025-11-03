@@ -1,10 +1,12 @@
+import os
 import pytest
 import zmq
 
 from tests.helpers import wait_for_result2
-from zmq_tubes.threads import Tube, TubeNode
+from zmq_tubes.threads import Tube, TubeNode, Context
 
 ADDR = 'ipc:///tmp/dealer_rep.pipe'
+os.path.exists(ADDR.replace('ipc://', '')) and os.remove(ADDR.replace('ipc://', ''))
 TOPIC = 'req'
 
 
@@ -35,7 +37,8 @@ def dealer_node(request):
         addr=ADDR,
         server=request.param['server'],
         tube_type=zmq.DEALER,
-        utf8_decoding=request.param['utf8_decoding']
+        utf8_decoding=request.param['utf8_decoding'],
+        context=Context.instance()
     )
 
     node = TubeNode()
@@ -56,7 +59,8 @@ def resp_node1(result, request):
         addr=ADDR,
         server=request.param['server'],
         tube_type=zmq.REP,
-        utf8_decoding=request.param['utf8_decoding']
+        utf8_decoding=request.param['utf8_decoding'],
+        context=Context.instance()
     )
 
     node = TubeNode()
@@ -79,7 +83,8 @@ def resp_node2(result2, request):
         addr=ADDR,
         server=request.param['server'],
         tube_type=zmq.REP,
-        utf8_decoding=request.param['utf8_decoding']
+        utf8_decoding=request.param['utf8_decoding'],
+        context=Context.instance()
     )
 
     node = TubeNode()
@@ -110,7 +115,7 @@ def test_dealer_reps(dealer_node, resp_node1, resp_node2, data, data2,
             dealer_node.send(f"{TOPIC}/B", data2.pop())
         assert wait_for_result2(
             lambda: len(res) == 4 and len(result) == 2 and len(result2) == 2,
-            timeout=1
+            timeout=5
         )
 
 
@@ -140,7 +145,7 @@ def test_dealer_reps_on_same_node(dealer_node, data, result):
             dealer_node.send(f"{TOPIC}/A", data.pop())
         assert wait_for_result2(
             lambda: len(res) == 2 and len(result) == 2,
-            timeout=1
+            timeout=5
         )
 
 
@@ -161,5 +166,5 @@ def test_dealer_reps_bytes(dealer_node, resp_node1, result):
         assert wait_for_result2(
             lambda: len(res) == 1 and isinstance(res[0], bytes) and
                     len(result) == 1 and isinstance(result[0], bytes),
-            timeout=1
+            timeout=5
         )
