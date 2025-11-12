@@ -241,6 +241,7 @@ class Tube(AsyncTube):
 class TubeNode(AsyncTubeNode):
     __TUBE_CLASS = Tube
     __MONITOR_CLASS = TubeMonitor
+    EVENT_POOL_TIMEOUT = 10  # in ms
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -373,7 +374,7 @@ class TubeNode(AsyncTubeNode):
                 self.main_thread.ready_event.set()
                 while not cur_thread.is_stopped():
                     try:
-                        events = poller.poll(timeout=100)
+                        events = poller.poll(timeout=TubeNode.EVENT_POOL_TIMEOUT)
                     except zmq.error.ZMQError:
                         # This happens during shutdown
                         continue
